@@ -1,0 +1,27 @@
+name: Release PR
+on:
+  push:
+    branches:
+      - main
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # v4, pinned to immutable commit 5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
+      - id: release-please
+        uses: >-
+          googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
+        with:
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Dispatch existing release workflow
+        if: ${{ steps.release-please.outputs.release_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name }}
+        run: >-
+          gh workflow run release.yml --ref main -f release_tag="$RELEASE_TAG"

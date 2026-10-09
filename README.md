@@ -95,11 +95,15 @@ Tests and fixtures live in this repository, including the multi-select/custom-an
 
 ### Preparing a release
 
-1. Set `package.json` to the new release version and commit the source and manifest changes. Local build/test and `npm pack --dry-run --ignore-scripts` checks are optional validation.
-2. After review, push or merge the changes to `main` and wait for its Tests workflow, including `publish-dist`, to succeed. If `dist/` changed, wait for the automatic build commit to appear on `main`; if it did not change, no extra commit is needed.
-3. Fetch the updated `main` and inspect the commit you will tag. Only then create and push a matching `v<version>` tag on that fresh, prebuilt commit. Do not tag the earlier source-only commit or move an existing release tag.
+Use Conventional Commit messages for changes merged to `main`; Release Please opens or updates a Release PR with the proposed version and changelog:
 
-Tag pushes do not run the branch build/publish workflow. They validate the checked-in prebuilt runtime rather than silently rebuilding a release.
+- `fix: ...` creates a patch release.
+- `feat: ...` creates a minor release.
+- A breaking change (for example, a `BREAKING CHANGE:` footer) creates a major release.
+
+The Release PR is the human approval gate. Review and merge it to approve the version/changelog update; do not manually edit the version or auto-merge this PR. When the merge creates a GitHub release, automation explicitly dispatches the existing release workflow for its generated tag. That workflow validates and publishes the checked-in prebuilt files.
+
+Manual matching `v<version>` tag pushes and `workflow_dispatch` with `release_tag` remain available for recovery. Tag pushes still validate the checked-in prebuilt runtime rather than silently rebuilding a release.
 
 The release workflow rejects tags that do not match `package.json`, checks build freshness, runs tests, and packs the prebuilt files. It attaches both a versioned tarball and the stable `pi-ask-user.tgz` asset to the GitHub release, then publishes the same package to npm from a separate least-privilege job using npm Trusted Publishing (GitHub OIDC; no long-lived npm token). The npm CLI is pinned to 11.5.1 for OIDC support. Configure the package's npm Trusted Publisher for GitHub owner `FadhelHaidar`, repository `pi-ask-user`, and workflow `release.yml`; allow `npm publish`. The stable GitHub URL `/releases/latest/download/pi-ask-user.tgz` remains available for direct installs.
 

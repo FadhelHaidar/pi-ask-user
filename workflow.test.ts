@@ -8,6 +8,9 @@ import { afterEach, describe, expect, it } from "vitest";
 const root = fileURLToPath(new URL("./", import.meta.url));
 const workflow = readFileSync(join(root, ".github/workflows/test.yml"), "utf8");
 const release = readFileSync(join(root, ".github/workflows/release.yml"), "utf8");
+const releasePlease = readFileSync(join(root, ".github/workflows/release-please.yml"), "utf8");
+const releasePleaseConfig = JSON.parse(readFileSync(join(root, ".release-please-config.json"), "utf8"));
+const releasePleaseManifest = JSON.parse(readFileSync(join(root, ".release-please-manifest.json"), "utf8"));
 // Extract the actual inline publishing shell, not a reimplementation of it.
 const marker = "      - name: Commit tested dist if main is unchanged\n        run: |\n";
 const publishingShell = workflow.split(marker)[1]?.split("\n")
@@ -59,6 +62,22 @@ function fixture() {
 }
 
 describe("automatic build workflow", () => {
+	it("opens reviewed Release PRs and dispatches publication only for a created release", () => {
+		expect(releasePleaseConfig).toMatchObject({
+			"release-type": "node",
+			packages: { ".": { "package-name": "@fadhelhaidar/pi-ask-user" } },
+		});
+		expect(releasePleaseManifest).toEqual({ ".": "1.0.2" });
+		expect(releasePlease).toContain("branches:\n      - main");
+		expect(releasePlease).toContain("googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071");
+		expect(releasePlease).toContain("contents: write\n  pull-requests: write\n  actions: write");
+		expect(releasePlease).toContain("steps.release-please.outputs.release_created == 'true'");
+		expect(releasePlease).toContain("steps.release-please.outputs.tag_name");
+		expect(releasePlease).toContain("gh workflow run release.yml --ref main");
+		expect(releasePlease).toContain('-f release_tag="$RELEASE_TAG"');
+		expect(releasePlease).toContain("GH_TOKEN: ${{ github.token }}");
+		expect(readFileSync(join(root, "README.md"), "utf8")).toMatch(/fix:.*patch[\s\S]*feat:.*minor[\s\S]*BREAKING CHANGE:.*major/);
+	});
 	it("builds branch pushes and PRs before validation, with write access only for main publication", () => {
 		expect(workflow).toContain("  push:\n    branches:\n      - '**'\n  pull_request:");
 		expect(workflow).toContain("permissions:\n  contents: read\n");
