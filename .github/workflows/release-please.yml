@@ -24,4 +24,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release-please.outputs.tag_name }}
         run: >-
-          gh workflow run release.yml --ref main -f release_tag="$RELEASE_TAG"
+          gh workflow run release.yml
+          --repo FadhelHaidar/pi-ask-user
+          --ref main
+          -f release_tag="$RELEASE_TAG"

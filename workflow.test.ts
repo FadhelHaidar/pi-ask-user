@@ -68,14 +68,22 @@ describe("automatic build workflow", () => {
 			"include-component-in-tag": false,
 			packages: { ".": { "package-name": "@fadhelhaidar/pi-ask-user" } },
 		});
-		expect(releasePleaseManifest).toEqual({ ".": "1.0.2" });
+		// The manifest tracks the last released version, so it must stay in step with
+		// package.json; pinning a literal here would just break on every release.
+		expect(Object.keys(releasePleaseManifest)).toEqual(["."]);
+		expect(releasePleaseManifest["."]).toMatch(/^\d+\.\d+\.\d+$/);
+		const packageVersion = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+		expect(releasePleaseManifest["."]).toBe(packageVersion);
 		expect(releasePlease).toContain("branches:\n      - main");
 		expect(releasePlease).toContain("googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071");
 		expect(releasePlease).toContain("contents: write\n  pull-requests: write\n  actions: write");
 		expect(releasePlease).toContain("steps.release-please.outputs.release_created == 'true'");
 		expect(releasePlease).toContain("steps.release-please.outputs.tag_name");
-		expect(releasePlease).toContain("gh workflow run release.yml --ref main");
-		expect(releasePlease).toContain('-f release_tag="$RELEASE_TAG"');
+		// The dispatch job has no checkout, so `gh` cannot infer the repository and
+		// must be told it or it dies with "not a git repository".
+		expect(releasePlease.replace(/\s+/g, " ")).toContain(
+			'gh workflow run release.yml --repo FadhelHaidar/pi-ask-user --ref main -f release_tag="$RELEASE_TAG"',
+		);
 		expect(releasePlease).toContain("GH_TOKEN: ${{ github.token }}");
 		expect(readFileSync(join(root, "README.md"), "utf8")).toMatch(/fix:.*patch[\s\S]*feat:.*minor[\s\S]*BREAKING CHANGE:.*major/);
 	});
