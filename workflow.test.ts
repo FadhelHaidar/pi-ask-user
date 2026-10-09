@@ -65,6 +65,7 @@ describe("automatic build workflow", () => {
 	it("opens reviewed Release PRs and dispatches publication only for a created release", () => {
 		expect(releasePleaseConfig).toMatchObject({
 			"release-type": "node",
+			"include-component-in-tag": false,
 			packages: { ".": { "package-name": "@fadhelhaidar/pi-ask-user" } },
 		});
 		expect(releasePleaseManifest).toEqual({ ".": "1.0.2" });
