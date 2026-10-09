@@ -15,6 +15,16 @@ const releasePleaseManifest = JSON.parse(readFileSync(join(root, ".release-pleas
 const marker = "      - name: Commit tested dist if main is unchanged\n        run: |\n";
 const publishingShell = workflow.split(marker)[1]?.split("\n")
 	.map((line) => line.replace(/^          /, "")).join("\n");
+// Extract one step's own YAML, so a passing mention elsewhere in the file cannot
+// satisfy an assertion about it.
+const stepBlock = (text: string, name: string) => {
+	const start = text.indexOf(`- name: ${name}`);
+	if (start < 0) throw new Error(`Step not found: ${name}`);
+	const rest = text.slice(start);
+	const end = rest.search(/\n {6}- /);
+	return end < 0 ? rest : rest.slice(0, end);
+};
+const dispatchStep = stepBlock(releasePlease, "Dispatch existing release workflow");
 const temporary: string[] = [];
 afterEach(() => {
 	for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -77,14 +87,15 @@ describe("automatic build workflow", () => {
 		expect(releasePlease).toContain("branches:\n      - main");
 		expect(releasePlease).toContain("googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071");
 		expect(releasePlease).toContain("contents: write\n  pull-requests: write\n  actions: write");
-		expect(releasePlease).toContain("steps.release-please.outputs.release_created == 'true'");
-		expect(releasePlease).toContain("steps.release-please.outputs.tag_name");
+		expect(releasePlease).toContain("concurrency:\n  group: release-please\n  cancel-in-progress: false");
 		// The dispatch job has no checkout, so `gh` cannot infer the repository and
-		// must be told it or it dies with "not a git repository".
-		expect(releasePlease.replace(/\s+/g, " ")).toContain(
-			'gh workflow run release.yml --repo FadhelHaidar/pi-ask-user --ref main -f release_tag="$RELEASE_TAG"',
+		// must be told it, or it dies with "not a git repository".
+		expect(dispatchStep).toContain("steps.release-please.outputs.release_created == 'true'");
+		expect(dispatchStep).toContain("steps.release-please.outputs.tag_name");
+		expect(dispatchStep).toContain("GH_TOKEN: ${{ github.token }}");
+		expect(dispatchStep.replace(/\s+/g, " ")).toContain(
+			'gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main -f release_tag="$RELEASE_TAG"',
 		);
-		expect(releasePlease).toContain("GH_TOKEN: ${{ github.token }}");
 		expect(readFileSync(join(root, "README.md"), "utf8")).toMatch(/fix:.*patch[\s\S]*feat:.*minor[\s\S]*BREAKING CHANGE:.*major/);
 	});
 	it("builds branch pushes and PRs before validation, with write access only for main publication", () => {
