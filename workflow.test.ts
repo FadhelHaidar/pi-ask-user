@@ -86,6 +86,8 @@ describe("automatic build workflow", () => {
 		expect(release.indexOf("Validate release tag")).toBeLessThan(release.indexOf("bun run build:check"));
 		expect(release.indexOf("bun run build:check")).toBeLessThan(release.indexOf("bun run test"));
 		expect(release.indexOf("bun run test")).toBeLessThan(release.indexOf("npm pack --ignore-scripts"));
+		expect(release).toContain("cp \"$package_tarball\" release-artifacts/pi-ask-user.tgz");
+		expect(release).toContain("release-artifacts/*.tgz");
 	});
 
 	it("publishes only changed dist, including deletions, from the tested detached HEAD", () => {

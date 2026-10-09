@@ -34,6 +34,10 @@ jobs:
         run: |
           mkdir -p release-artifacts
           npm pack --ignore-scripts --pack-destination release-artifacts
+          package_tarball=$(find release-artifacts -maxdepth 1 -type f \
+            -name '*.tgz' -print -quit)
+          test -n "$package_tarball"
+          cp "$package_tarball" release-artifacts/pi-ask-user.tgz
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

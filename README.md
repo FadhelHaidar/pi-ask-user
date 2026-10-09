@@ -105,7 +105,7 @@ Tests and fixtures live in this repository, including the multi-select/custom-an
 
 Tag pushes do not run the branch build/publish workflow. They validate the checked-in prebuilt runtime rather than silently rebuilding a release.
 
-The release workflow rejects tags that do not match `package.json`, checks build freshness, runs tests, packs the prebuilt files, and attaches the tarball to a GitHub release. It uses the repository's GitHub token, not npm credentials. A GitHub Actions release run is required to produce the downloadable asset.
+The release workflow rejects tags that do not match `package.json`, checks build freshness, runs tests, packs the prebuilt files, and attaches both a versioned tarball and the stable `pi-ask-user.tgz` asset to each GitHub release. The stable URL `/releases/latest/download/pi-ask-user.tgz` lets Pi update to the newest published release without changing the package declaration. It uses the repository's GitHub token, not npm credentials. A GitHub Actions release run is required to produce the downloadable assets.
 
 ## License
 
