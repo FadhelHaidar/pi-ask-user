@@ -87,7 +87,16 @@ describe("automatic build workflow", () => {
 		expect(release.indexOf("bun run build:check")).toBeLessThan(release.indexOf("bun run test"));
 		expect(release.indexOf("bun run test")).toBeLessThan(release.indexOf("npm pack --ignore-scripts"));
 		expect(release).toContain("cp \"$package_tarball\" release-artifacts/pi-ask-user.tgz");
-		expect(release).toContain("release-artifacts/*.tgz");
+		expect(release).toContain("release-artifacts/*.tgz --clobber");
+		expect(release).toContain('if ! gh release view "$GITHUB_REF_NAME"');
+		expect(release).toContain("id-token: write");
+		expect(release).toContain("npm install --global npm@11.5.1");
+		expect(release).toContain("npm publish npm-package/package.tgz");
+		expect(release).toContain("dist.integrity");
+		expect(release).toContain("Published npm version has different tarball integrity.");
+		expect(release).toContain("grep -Fq 'E404' npm-view.err");
+		expect(release).toContain("needs: release");
+		expect(release).toContain("persist-credentials: false");
 	});
 
 	it("publishes only changed dist, including deletions, from the tested detached HEAD", () => {

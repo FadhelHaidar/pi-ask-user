@@ -43,7 +43,7 @@ Sync the Pi package declaration `git:github.com/FadhelHaidar/pi-ask-user@v1.0.1`
 
 Pinned tags do not automatically advance. A machine still configured for `@v1.0.0` keeps the old package until you change the declaration to a prebuilt release tag. A tag must be published before the corresponding install command works; source changes alone do not create a release.
 
-Each new GitHub release also provides an npm-format `.tgz` containing the same prebuilt runtime. This does not publish the package to npm; the supported Pi installation route remains Git.
+The package is published to npm as `@fadhelhaidar/pi-ask-user`; use the unpinned Pi source `npm:@fadhelhaidar/pi-ask-user` to let Pi compare registry versions and detect updates. GitHub releases also provide the same prebuilt runtime as versioned and stable `.tgz` assets for direct installation.
 
 ## Preserved custom behavior
 
@@ -101,11 +101,11 @@ Tests and fixtures live in this repository, including the multi-select/custom-an
 
 1. Set `package.json` to the new release version and commit the source and manifest changes. Local build/test and `npm pack --dry-run --ignore-scripts` checks are optional validation.
 2. After review, push or merge the changes to `main` and wait for its Tests workflow, including `publish-dist`, to succeed. If `dist/` changed, wait for the automatic build commit to appear on `main`; if it did not change, no extra commit is needed.
-3. Fetch the updated `main` and inspect the commit you will tag. Only then create and push a matching `v<version>` tag (for this change, `v1.0.1`) on that fresh, prebuilt commit. Do not tag the earlier source-only commit or move an existing release tag.
+3. Fetch the updated `main` and inspect the commit you will tag. Only then create and push a matching `v<version>` tag on that fresh, prebuilt commit. Do not tag the earlier source-only commit or move an existing release tag.
 
 Tag pushes do not run the branch build/publish workflow. They validate the checked-in prebuilt runtime rather than silently rebuilding a release.
 
-The release workflow rejects tags that do not match `package.json`, checks build freshness, runs tests, packs the prebuilt files, and attaches both a versioned tarball and the stable `pi-ask-user.tgz` asset to each GitHub release. The stable URL `/releases/latest/download/pi-ask-user.tgz` lets Pi update to the newest published release without changing the package declaration. It uses the repository's GitHub token, not npm credentials. A GitHub Actions release run is required to produce the downloadable assets.
+The release workflow rejects tags that do not match `package.json`, checks build freshness, runs tests, and packs the prebuilt files. It attaches both a versioned tarball and the stable `pi-ask-user.tgz` asset to the GitHub release, then publishes the same package to npm from a separate least-privilege job using npm Trusted Publishing (GitHub OIDC; no long-lived npm token). The npm CLI is pinned to 11.5.1 for OIDC support. Configure the package's npm Trusted Publisher for GitHub owner `FadhelHaidar`, repository `pi-ask-user`, and workflow `release.yml`; allow `npm publish`. The stable GitHub URL `/releases/latest/download/pi-ask-user.tgz` remains available for direct installs.
 
 ## License
 
