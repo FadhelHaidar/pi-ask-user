@@ -1,12 +1,18 @@
 name: Tests
 on:
   push:
+    branches:
+      - '**'
   pull_request:
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -14,4 +20,51 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun run build:check
+      - run: bun run typecheck
       - run: bun run test
+      - name: Save tested dist
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tested-dist
+          path: dist/
+          if-no-files-found: error
+  publish-dist:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      # Download replaces the entire tree, including removed build chunks.
+      - run: rm -rf dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: tested-dist
+          path: dist/
+      - name: Commit tested dist if main is unchanged
+        run: |
+          set -euo pipefail
+          git fetch origin refs/heads/main:refs/remotes/origin/main
+          remote_head=$(git rev-parse refs/remotes/origin/main)
+          if [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo "main advanced; leaving dist to the newer run."
+            exit 0
+          fi
+          git add --all -- dist/
+          if git diff --cached --quiet; then
+            echo "dist/ is already current."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email \
+            '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: update prebuilt dist'
+          # GITHUB_TOKEN pushes do not trigger another workflow run.
+          # A concurrent main update makes this non-force push fail safely.
+          git push origin HEAD:refs/heads/main

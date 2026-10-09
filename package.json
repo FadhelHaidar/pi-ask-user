@@ -1,6 +1,6 @@
 {
   "name": "@fadhelhaidar/pi-ask-user",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Standalone Pi questionnaire with combined multi-select and custom answers, Enter-only toggling, and preserved drafts.",
   "type": "module",
   "license": "MIT",
@@ -14,67 +14,35 @@
     "url": "git+https://github.com/FadhelHaidar/pi-ask-user.git"
   },
   "exports": {
-    ".": "./index.ts",
-    "./events": "./events.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./events": {
+      "types": "./dist/events.d.ts",
+      "default": "./dist/events.js"
+    }
   },
   "scripts": {
-    "test": "vitest run"
+    "build": "bun scripts/build.ts",
+    "build:check": "bun scripts/build.ts --check",
+    "test": "vitest run",
+    "typecheck": "tsc -p tests/types/tsconfig.json"
   },
   "files": [
-    "ask-user-question.ts",
-    "rpc-fallback.ts",
-    "config.ts",
-    "events.ts",
-    "index.ts",
-    "reconcile.ts",
+    "dist/",
     "LICENSE",
-    "locales/",
     "docs/",
     "!docs/*.png",
     "!docs/*.jpg",
     "!docs/*.svg",
     "README.md",
-    "state/build-questionnaire.ts",
-    "state/external-editor.ts",
-    "state/i18n-bridge.ts",
-    "state/key-router.ts",
-    "state/questionnaire-session.ts",
-    "state/row-intent.ts",
-    "state/selectors/contract.ts",
-    "state/selectors/derivations.ts",
-    "state/selectors/focus.ts",
-    "state/selectors/projections.ts",
-    "state/state-reducer.ts",
-    "state/state.ts",
-    "tool/format-answer.ts",
-    "tool/normalize-params.ts",
-    "tool/response-envelope.ts",
-    "tool/types.ts",
-    "tool/validate-questionnaire.ts",
-    "view/component-binding.ts",
-    "view/components/inline-input.ts",
-    "view/components/multi-select-view.ts",
-    "view/components/option-list-view.ts",
-    "view/components/preview/markdown-content-cache.ts",
-    "view/components/preview/preview-block-renderer.ts",
-    "view/components/preview/preview-box-renderer.ts",
-    "view/components/preview/preview-layout-decider.ts",
-    "view/components/preview/preview-pane.ts",
-    "view/components/submit-picker.ts",
-    "view/components/tab-bar.ts",
-    "view/components/wrapping-select.ts",
-    "view/dialog-builder.ts",
-    "view/props-adapter.ts",
-    "view/stateful-view.ts",
-    "view/tab-components.ts",
-    "view/tab-content-strategy.ts",
-    "lib/",
     "NOTICE.md",
     "!**/*.test.ts"
   ],
   "pi": {
     "extensions": [
-      "./index.ts"
+      "./dist/index.js"
     ]
   },
   "peerDependencies": {
@@ -92,6 +60,7 @@
     "@earendil-works/pi-coding-agent": "1.0.2",
     "@earendil-works/pi-tui": "1.0.2",
     "@juicesharp/rpiv-i18n": "2.12.0",
+    "typescript": "5.9.3",
     "vitest": "4.1.10"
   }
 }

@@ -30,10 +30,20 @@ This repository therefore owns its releases independently. The config helper and
 ## Install
 
 ```sh
-pi install git:github.com/FadhelHaidar/pi-ask-user@v1.0.0
+pi install git:github.com/FadhelHaidar/pi-ask-user@v1.0.1
 ```
 
+Starting with v1.0.1, Git releases include prebuilt JavaScript and translations in `dist/`. Installation uses these files directly: no Bun, compiler, development dependencies, or local build is required. Pi and its runtime dependencies are still required.
+
 Restart Pi after installing. Remove any other package registering `ask_user_question` to avoid duplicate registration.
+
+### GitSync and new machines
+
+Sync the Pi package declaration `git:github.com/FadhelHaidar/pi-ask-user@v1.0.1`, then install the declared package on the destination machine using Pi. If you sync a local checkout instead, include the tracked `dist/` directory and install it with `pi install /path/to/pi-ask-user`. Neither route needs `bun run build` on the destination.
+
+Pinned tags do not automatically advance. A machine still configured for `@v1.0.0` keeps the old package until you change the declaration to a prebuilt release tag. A tag must be published before the corresponding install command works; source changes alone do not create a release.
+
+Each new GitHub release also provides an npm-format `.tgz` containing the same prebuilt runtime. This does not publish the package to npm; the supported Pi installation route remains Git.
 
 ## Preserved custom behavior
 
@@ -68,13 +78,34 @@ The optional `@juicesharp/rpiv-i18n` integration is retained. Without it, the UI
 
 Requires Node.js 22+ and Bun.
 
+GitHub Actions is the routine builder. Branch pushes and pull requests build before checking freshness, types, and tests, so missing or stale committed `dist/` does not block source changes. After a successful run for `main`, a separate job commits only the tested `dist/` when it changed. It skips an outdated run if `main` has advanced and never force-pushes. Bot commits made with the repository's GitHub token do not trigger another workflow run.
+
+Local validation is optional:
+
 ```sh
 bun install
+bun run build
+bun run build:check
+bun run typecheck
 bun run test
 pi -e ./index.ts
 ```
 
-Tests and fixtures live in this repository, including the multi-select/custom-answer regressions. Published optional localization is installed only for development tests. Pi supplies its host libraries at runtime.
+`pi -e ./index.ts` loads source for development. Use `pi -e ./dist/index.js` to smoke-test the shipped extension after building. For local builds, use Bun 1.4.2, matching CI: compiler versions can change artifact bytes. You can push source changes without routinely building or committing `dist/` locally; Actions updates the tracked runtime on `main`. Branch checkouts may have stale artifacts until built, and installations should use a completed prebuilt release. There are no install-time build hooks. TypeScript declarations ship with both public entry points. Event declarations are generated from `events.ts`; keep `scripts/index.d.ts.template` synchronized if the root factory signature or exports change.
+
+The workflow files must first be pushed to GitHub before Actions can run them. Repository or branch-protection rules may need to permit `github-actions[bot]` commits to `main` using the repository token. This project does not change those settings automatically. If publication is blocked or loses a concurrent push race, inspect the run and rerun the workflow for the latest `main` commit.
+
+Tests and fixtures live in this repository, including the multi-select/custom-answer regressions. Published optional localization is installed only for development tests. Pi supplies its host libraries at runtime; the build leaves bare package imports external.
+
+### Preparing a release
+
+1. Set `package.json` to the new release version and commit the source and manifest changes. Local build/test and `npm pack --dry-run --ignore-scripts` checks are optional validation.
+2. After review, push or merge the changes to `main` and wait for its Tests workflow, including `publish-dist`, to succeed. If `dist/` changed, wait for the automatic build commit to appear on `main`; if it did not change, no extra commit is needed.
+3. Fetch the updated `main` and inspect the commit you will tag. Only then create and push a matching `v<version>` tag (for this change, `v1.0.1`) on that fresh, prebuilt commit. Do not tag the earlier source-only commit or move an existing release tag.
+
+Tag pushes do not run the branch build/publish workflow. They validate the checked-in prebuilt runtime rather than silently rebuilding a release.
+
+The release workflow rejects tags that do not match `package.json`, checks build freshness, runs tests, packs the prebuilt files, and attaches the tarball to a GitHub release. It uses the repository's GitHub token, not npm credentials. A GitHub Actions release run is required to produce the downloadable asset.
 
 ## License
 
