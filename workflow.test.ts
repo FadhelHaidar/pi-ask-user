@@ -87,7 +87,7 @@ describe("automatic build workflow", () => {
 		expect(releasePlease).toContain("branches:\n      - main");
 		expect(releasePlease).toContain("googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071");
 		expect(releasePlease).toContain("contents: write\n  pull-requests: write\n  actions: write");
-		expect(releasePlease).toContain("group: release-please");
+		expect(releasePlease).toContain("concurrency:\n  group: release-please\n  cancel-in-progress: false");
 		// The dispatch job has no checkout, so `gh` cannot infer the repository and
 		// must be told it, or it dies with "not a git repository".
 		expect(dispatchStep).toContain("steps.release-please.outputs.release_created == 'true'");

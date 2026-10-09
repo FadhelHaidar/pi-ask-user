@@ -3,7 +3,8 @@ on:
   push:
     branches:
       - main
-# Serialize runs so a second push cannot leave a stale release PR open.
+# One release-please run at a time. Queued, not cancelled: an in-flight run is
+# the one that dispatches publication, so it must never be cut short.
 concurrency:
   group: release-please
   cancel-in-progress: false
