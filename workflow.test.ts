@@ -81,6 +81,9 @@ describe("automatic build workflow", () => {
 
 	it("keeps tag releases validating checked-in dist before tests and packing", () => {
 		expect(release).toContain("tags:\n      - 'v*'");
+		expect(release).toContain("workflow_dispatch:");
+		expect(release).toContain("ref: ${{ inputs.release_tag || github.ref }}");
+		expect(release).toContain("RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}");
 		expect(release).toContain("if (actual !== expected)");
 		expect(release).not.toMatch(/run: bun run build\s*\n/);
 		expect(release.indexOf("Validate release tag")).toBeLessThan(release.indexOf("bun run build:check"));
@@ -88,10 +91,10 @@ describe("automatic build workflow", () => {
 		expect(release.indexOf("bun run test")).toBeLessThan(release.indexOf("npm pack --ignore-scripts"));
 		expect(release).toContain("cp \"$package_tarball\" release-artifacts/pi-ask-user.tgz");
 		expect(release).toContain("release-artifacts/*.tgz --clobber");
-		expect(release).toContain('if ! gh release view "$GITHUB_REF_NAME"');
+		expect(release).toContain('if ! gh release view "$RELEASE_TAG"');
 		expect(release).toContain("id-token: write");
 		expect(release).toContain("npm install --global npm@11.5.1");
-		expect(release).toContain("npm publish npm-package/package.tgz");
+		expect(release).toContain("npm publish ./npm-package/package.tgz");
 		expect(release).toContain("dist.integrity");
 		expect(release).toContain("Published npm version has different tarball integrity.");
 		expect(release).toContain("grep -Fq 'E404' npm-view.err");

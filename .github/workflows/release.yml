@@ -3,17 +3,26 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
     permissions:
       contents: write
     steps:
       # v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          ref: ${{ inputs.release_tag || github.ref }}
           persist-credentials: false
       # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -29,7 +38,7 @@ jobs:
           import { readFileSync } from 'node:fs';
           const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
           const expected = `v${version}`;
-          const actual = process.env.GITHUB_REF_NAME;
+          const actual = process.env.RELEASE_TAG;
           if (actual !== expected) {
             throw new Error(`Release tag must be ${expected}, got ${actual}`);
           }
@@ -49,10 +58,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --generate-notes
           fi
-          gh release upload "$GITHUB_REF_NAME" release-artifacts/*.tgz --clobber
+          gh release upload "$RELEASE_TAG" release-artifacts/*.tgz --clobber
       - name: Prepare npm artifact
         run: |
           mkdir -p npm-artifact
@@ -86,7 +95,9 @@ jobs:
         run: |
           set -euo pipefail
           package_name=$(node -p "require('./npm-package/package.json').name")
-          package_version=$(node -p "require('./npm-package/package.json').version")
+          package_version=$(
+            node -p "require('./npm-package/package.json').version"
+          )
           local_integrity=sha512-
           local_integrity+=$(openssl dgst -sha512 -binary \
             npm-package/package.tgz | openssl base64 -A)
@@ -105,4 +116,4 @@ jobs:
             cat npm-view.err >&2
             exit 1
           fi
-          npm publish npm-package/package.tgz --access public --ignore-scripts
+          npm publish ./npm-package/package.tgz --access public --ignore-scripts

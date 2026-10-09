@@ -30,20 +30,16 @@ This repository therefore owns its releases independently. The config helper and
 ## Install
 
 ```sh
-pi install git:github.com/FadhelHaidar/pi-ask-user@v1.0.1
+pi install npm:@fadhelhaidar/pi-ask-user
 ```
 
-Starting with v1.0.1, Git releases include prebuilt JavaScript and translations in `dist/`. Installation uses these files directly: no Bun, compiler, development dependencies, or local build is required. Pi and its runtime dependencies are still required.
+The npm package and Git releases include prebuilt JavaScript and translations in `dist/`. Installation uses these files directly: no Bun, compiler, development dependencies, or local build is required. Pi and its runtime dependencies are still required.
 
 Restart Pi after installing. Remove any other package registering `ask_user_question` to avoid duplicate registration.
 
 ### GitSync and new machines
 
-Sync the Pi package declaration `git:github.com/FadhelHaidar/pi-ask-user@v1.0.1`, then install the declared package on the destination machine using Pi. If you sync a local checkout instead, include the tracked `dist/` directory and install it with `pi install /path/to/pi-ask-user`. Neither route needs `bun run build` on the destination.
-
-Pinned tags do not automatically advance. A machine still configured for `@v1.0.0` keeps the old package until you change the declaration to a prebuilt release tag. A tag must be published before the corresponding install command works; source changes alone do not create a release.
-
-The package is published to npm as `@fadhelhaidar/pi-ask-user`; use the unpinned Pi source `npm:@fadhelhaidar/pi-ask-user` to let Pi compare registry versions and detect updates. GitHub releases also provide the same prebuilt runtime as versioned and stable `.tgz` assets for direct installation.
+For GitSync and new machines, use the unpinned Pi package source `npm:@fadhelhaidar/pi-ask-user`. Pi can compare npm versions and notify about updates; `pi update --extensions` installs the latest published version. GitHub releases also provide versioned and stable `.tgz` assets for direct installation, but pinned Git tags do not advance automatically. If you sync a local checkout instead, include the tracked `dist/` directory and install it with `pi install /path/to/pi-ask-user`.
 
 ## Preserved custom behavior
 
