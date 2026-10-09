@@ -5,6 +5,24 @@ All notable changes to `@juicesharp/rpiv-ask-user-question` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3](https://github.com/FadhelHaidar/pi-ask-user/compare/v1.0.2...v1.0.3) (2026-10-09)
+
+
+### Features
+
+* automate release PRs with conventional commits ([ef7dab2](https://github.com/FadhelHaidar/pi-ask-user/commit/ef7dab215a8e4dafd83c67b41c8812f883d5ef69))
+
+
+### Bug Fixes
+
+* retry npm publishing for existing release ([1b04a86](https://github.com/FadhelHaidar/pi-ask-user/commit/1b04a86421759612294f9b2fcca5a017959fb4d7))
+* use existing version tags in release PR workflow ([f650d29](https://github.com/FadhelHaidar/pi-ask-user/commit/f650d2939ddb1306d0e1396cc729912a4b89183c))
+
+
+### Miscellaneous Chores
+
+* reset version after unintended 1.1.0 release ([cc4bbaa](https://github.com/FadhelHaidar/pi-ask-user/commit/cc4bbaaf4f61dfa9e5068670a19f11e0d9f16ed8))
+
 ## [Unreleased]
 
 ## [2.12.0] - 2026-09-30
