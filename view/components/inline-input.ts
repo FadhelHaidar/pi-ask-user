@@ -1,4 +1,4 @@
-import { CURSOR_MARKER, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, renderFakeCursor, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 // Grapheme-aware extraction at the cursor: pi-tui's Editor reports UTF-16
 // line/column positions, so the cursor can land between code units of one cluster
@@ -33,11 +33,12 @@ function resolveCursorOffset(buffer: string, requested: number | undefined): num
 
 /**
  * Build the cursor-marked raw string for the whole buffer: `before | CURSOR_MARKER |
- * SGR-7 reverse-video cell | SGR-27 | after`. The cell UNDER the cursor is the single
+ * `renderFakeCursor()`-wrapped cell | after`. The cell UNDER the cursor is the single
  * grapheme at the offset (or U+00A0 NBSP at end-of-buffer / on a literal space — NBSP is
  * wrap-safe where a literal space would tokenize as a wrap break). Zero characters shift;
  * the column under the cursor inverts. `CURSOR_MARKER` is zero-width so wrap/truncate math
- * is preserved.
+ * is preserved; the TUI resolves the fake-cursor markers (or omits them when
+ * `showHardwareCursor` is enabled).
  */
 function buildCursorRaw(buffer: string, offset: number): string {
 	const before = buffer.slice(0, offset);
@@ -48,7 +49,7 @@ function buildCursorRaw(buffer: string, offset: number): string {
 	const cursorAtLineEnd = rawAt === "\n";
 	const atCursor = rawAt === "" || rawAt === " " || cursorAtLineEnd ? "\xa0" : rawAt;
 	const after = buffer.slice(offset + (cursorAtLineEnd ? 0 : rawAt.length));
-	return `${before}${CURSOR_MARKER}\x1b[7m${atCursor}\x1b[27m${after}`;
+	return `${before}${CURSOR_MARKER}${renderFakeCursor(atCursor)}${after}`;
 }
 
 /**

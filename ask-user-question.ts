@@ -314,6 +314,8 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 			// Line-terminator normalization runs once here, ahead of validation, so
 			// every downstream consumer — validator, TUI, RPC walker, envelope, prompt
 			// event — sees the same clean text (#192).
+			// SAFETY: raw tool params are `unknown` by host contract; the
+			// validator below rejects anything that isn't a real questionnaire.
 			const typed = normalizeQuestionParams(params as unknown as QuestionParams);
 			if (!ctx.hasUI) return rejectWithoutUi();
 
@@ -335,7 +337,7 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 			// the sequential dialog walker up front, skipping the TUI render-graph
 			// import entirely; RPC builds that predate ctx.mode are caught by the
 			// custom()-resolved-undefined backstop below. See ./rpc-fallback.ts.
-			if ((ctx as { mode?: string }).mode === "rpc" && hasDialogUI(ctx.ui)) {
+			if (ctx.mode === "rpc" && hasDialogUI(ctx.ui)) {
 				return runRpcPath(pi, ctx.ui, typed);
 			}
 
