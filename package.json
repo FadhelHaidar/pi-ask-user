@@ -1,6 +1,6 @@
 {
   "name": "@fadhelhaidar/pi-ask-user",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Standalone Pi questionnaire with combined multi-select and custom answers, Enter-only toggling, and preserved drafts.",
   "type": "module",
   "license": "MIT",
