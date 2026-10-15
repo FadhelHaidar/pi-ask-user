@@ -1,14 +1,15 @@
-import { CURSOR_MARKER, visibleWidth } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, renderFakeCursor, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { WrappingSelect, type WrappingSelectItem, type WrappingSelectTheme } from "./wrapping-select.js";
 
 // Cursor render emitted by wrapping-select.ts:renderInlineInputRow — pi-tui's
 // zero-width CURSOR_MARKER (hardware-cursor positioning) immediately followed by
-// the character UNDER the cursor wrapped in SGR 7/27 (reverse video). The cursor
+// the character UNDER the cursor wrapped in `renderFakeCursor()` APC markers
+// (reverse video, omitted when `showHardwareCursor` is enabled). The cursor
 // REPLACES (does not insert), so width is preserved. At end-of-buffer the
 // reverse-video character is a single U+00A0 (NBSP); a literal space would
 // tokenize as a wrap break.
-const cursorOn = (ch: string) => `${CURSOR_MARKER}\x1b[7m${ch}\x1b[27m`;
+const cursorOn = (ch: string) => `${CURSOR_MARKER}${renderFakeCursor(ch)}`;
 const NBSP = " ";
 
 const identityTheme: WrappingSelectTheme = {

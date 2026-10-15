@@ -343,7 +343,7 @@ function perTabBinding(spec) {
 import { truncateToWidth as truncateToWidth2, visibleWidth, wrapTextWithAnsi as wrapTextWithAnsi2 } from "@earendil-works/pi-tui";
 
 // view/components/inline-input.ts
-import { CURSOR_MARKER, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, renderFakeCursor, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 var graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 function resolveCursorOffset(buffer, requested) {
   if (requested !== undefined && requested >= 0 && requested <= buffer.length)
@@ -358,7 +358,7 @@ function buildCursorRaw(buffer, offset) {
 `;
   const atCursor = rawAt === "" || rawAt === " " || cursorAtLineEnd ? " " : rawAt;
   const after = buffer.slice(offset + (cursorAtLineEnd ? 0 : rawAt.length));
-  return `${before}${CURSOR_MARKER}\x1B[7m${atCursor}\x1B[27m${after}`;
+  return `${before}${CURSOR_MARKER}${renderFakeCursor(atCursor)}${after}`;
 }
 function renderInlineInputRow(opts) {
   const { buffer, cursorOffset, rowPrefix, continuationPrefix, contentWidth, selectedText } = opts;

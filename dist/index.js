@@ -314,7 +314,7 @@ var PREWARM_DELAY_MS = 2000;
 async function loadQuestionnaireSession() {
   let mod;
   try {
-    mod = await import("./chunks/questionnaire-session-gdq5zqtt.js");
+    mod = await import("./chunks/questionnaire-session-j2wmt696.js");
   } catch (e) {
     const cause = e instanceof Error ? e.message : String(e);
     return { ok: false, error: "session_load_failed", message: `${ERROR_SESSION_LOAD_FAILED} (cause: ${cause})` };
