@@ -5,6 +5,13 @@ All notable changes to `@fadhelhaidar/pi-ask-user` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4](https://github.com/FadhelHaidar/pi-ask-user/compare/v1.0.3...v1.0.4) (2026-10-15)
+
+
+### Bug Fixes
+
+* adopt Pi 1.2.0 cursor protocol and bump host devDeps ([#5](https://github.com/FadhelHaidar/pi-ask-user/issues/5)) ([0947ab7](https://github.com/FadhelHaidar/pi-ask-user/commit/0947ab7bc4bb66e77823c5ff4c7d7bc15c2b90d4))
+
 ## [1.0.3](https://github.com/FadhelHaidar/pi-ask-user/compare/v1.0.2...v1.0.3) (2026-10-09)
 
 
