@@ -57,8 +57,13 @@ the footer hint segments (including the collapsed-state line and the Submit tab'
 submit-readiness prompt, incomplete-answers warning, and committed-note `Note` label, the
 preview pane's empty and notes-affordance lines, the notes header and the global-note
 header on the Submit tab, the
-external-editor failure notification, and the two RPC dialog prompts. Twenty-six keys in total,
-all under the namespace `@juicesharp/rpiv-ask-user-question`.
+external-editor failure notification, the saved-note row label and the preview's "press
+<key> to edit" line, and the two RPC dialog prompts. Thirty-one keys in total, all under
+the namespace `@juicesharp/rpiv-ask-user-question`.
+
+The transcript receipts the model's answer is rendered into — the `✓`, `✗`, `not
+answered` and `no answer` strings — are translated too (`transcript.*`), because they are
+chrome in the transcript rather than prompt input.
 
 Everything the *model* reads stays English by design: the tool description, the parameter
 schema descriptions, error messages, and the reserved-label list. Those are prompt inputs,

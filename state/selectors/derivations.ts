@@ -30,6 +30,21 @@ export function selectConfirmedIndicator(
 }
 
 /**
+ * The committed note for a question tab, or `undefined` when it has none. Same precedence as
+ * the reducer's editor seeding (`notesValueFor`): the in-flight side-band (`notesByTab`) is
+ * authoritative — a note saved before the question is answered lives only there, and a
+ * present empty string means the note was cleared — with `answer.notes` as the mirror.
+ */
+export function selectSavedNote(
+	notesByTab: ReadonlyMap<number, string>,
+	answers: ReadonlyMap<number, QuestionAnswer>,
+	tab: number,
+): string | undefined {
+	const note = notesByTab.get(tab) ?? answers.get(tab)?.notes;
+	return note && note.length > 0 ? note : undefined;
+}
+
+/**
  * Index of the preview pane to display for the current tab. The Submit tab (currentTab ===
  * questions.length) reuses the last question's pane purely for layout — the strategy
  * machinery picks the right body component independently. Defensive against `totalQuestions === 0`.

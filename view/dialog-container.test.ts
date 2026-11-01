@@ -1,6 +1,6 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component, Editor } from "@earendil-works/pi-tui";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, visibleWidth } from "@earendil-works/pi-tui";
 import { makeTheme } from "@juicesharp/rpiv-test-utils";
 import { describe, expect, it } from "vitest";
 import {
@@ -29,6 +29,7 @@ import {
 	INCOMPLETE_WARNING_PREFIX,
 	READY_PROMPT,
 	REVIEW_HEADING,
+	SAVED_NOTE_LABEL,
 } from "./dialog-builder.js";
 import type { TabComponents } from "./tab-components.js";
 
@@ -129,6 +130,7 @@ function makeConfig(over: MakeConfigOverrides = {}): DialogParts {
 			}),
 		getTerminalRows: over.getTerminalRows ?? (() => 24),
 		collapseKey: over.collapseKey ?? "ctrl+]",
+		notesKey: "n",
 	};
 	const initialProps: DialogProps = over.initialProps ?? { state, activePreviewPane: previewPane };
 	return { config, initialProps };
@@ -137,6 +139,60 @@ function makeConfig(over: MakeConfigOverrides = {}): DialogParts {
 function makeDialog(parts: DialogParts): DialogView {
 	return new DialogView(parts.config, parts.initialProps);
 }
+
+describe("makeDialog — saved note row (#197)", () => {
+	const withNote = (notesByTab: Map<number, string>, notesVisible = false): DialogState => ({
+		currentTab: 0,
+		optionIndex: 0,
+		notesVisible,
+		inputMode: false,
+		answers: new Map(),
+		multiSelectChecked: new Set(),
+		customDraftsByTab: new Map(),
+		notesByTab,
+		submitChoiceIndex: 0,
+		notesDraft: "",
+		collapsed: false,
+	});
+
+	it("keeps the committed note visible once the editor closes", () => {
+		const dlg = makeDialog(makeConfig({ state: withNote(new Map([[0, "we already use it"]])) }));
+		const joined = dlg.render(80).join("\n");
+		expect(joined).toContain(`${SAVED_NOTE_LABEL} we already use it`);
+	});
+
+	it("clips a multi-line note to its first line plus ` …`", () => {
+		const dlg = makeDialog(makeConfig({ state: withNote(new Map([[0, "first line\nsecond line"]])) }));
+		const joined = dlg.render(80).join("\n");
+		expect(joined).toContain(`${SAVED_NOTE_LABEL} first line …`);
+		expect(joined).not.toContain("second line");
+	});
+
+	it("yields to the editor while notes are open, and shows nothing without a note", () => {
+		const open = makeDialog(makeConfig({ state: withNote(new Map([[0, "saved"]]), true) })).render(80).join("\n");
+		expect(open).not.toContain(SAVED_NOTE_LABEL);
+		expect(open).toContain("<NOTES_INPUT>");
+		const empty = makeDialog(makeConfig({ state: withNote(new Map()) })).render(80).join("\n");
+		expect(empty).not.toContain(SAVED_NOTE_LABEL);
+	});
+
+	it("keeps the editing cursor in view when a multiline note overflows (#317)", () => {
+		// The editor is three components but many rendered rows: sizing the focus range by
+		// component count followed the note's tail and scrolled an early cursor out of view.
+		const noteLines = Array.from({ length: 20 }, (_, i) => `note-line-${i}`);
+		noteLines[1] = `note-line-1${CURSOR_MARKER}`;
+		const dlg = makeDialog(
+			makeConfig({
+				state: withNote(new Map(), true),
+				notesInput: stubComponent(noteLines) as unknown as Editor,
+				getTerminalRows: () => 14,
+			}),
+		);
+		const lines = dlg.render(80);
+		expect(lines.length).toBeLessThanOrEqual(14);
+		expect(lines.some((line) => line.includes(CURSOR_MARKER))).toBe(true);
+	});
+});
 
 describe("makeDialog — single-question mode", () => {
 	it("omits the TabBar entirely", () => {

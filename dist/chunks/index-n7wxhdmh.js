@@ -75,6 +75,8 @@ function readEnvVar(key, fallback) {
 // config.ts
 var DEFAULT_COLLAPSE_KEY = "ctrl+]";
 var COLLAPSE_KEY_OFF = "off";
+var DEFAULT_NOTES_KEY = "n";
+var KEY_PLACEHOLDER = "{key}";
 var SPECIAL_KEYS = new Set([
   "escape",
   "esc",
@@ -118,6 +120,32 @@ function resolveCollapseKey(config) {
   if (raw === COLLAPSE_KEY_OFF)
     return COLLAPSE_KEY_OFF;
   return isValidCollapseKeySpec(raw) ? raw : DEFAULT_COLLAPSE_KEY;
+}
+var NOTES_KEY_RESERVED = new Set([
+  "space",
+  "enter",
+  "return",
+  "tab",
+  "escape",
+  "esc",
+  "up",
+  "down",
+  "left",
+  "right"
+]);
+function resolveNotesKey(config) {
+  const raw = typeof config.notesKey === "string" ? config.notesKey.trim() : "";
+  if (!raw)
+    return DEFAULT_NOTES_KEY;
+  if ([...raw].length === 1)
+    return raw;
+  const spec = raw.toLowerCase();
+  return isValidCollapseKeySpec(spec) && !NOTES_KEY_RESERVED.has(spec) ? spec : DEFAULT_NOTES_KEY;
+}
+function formatNotesKeyForDisplay(notesKey) {
+  if (typeof notesKey !== "string" || notesKey.length === 0)
+    return formatNotesKeyForDisplay(DEFAULT_NOTES_KEY);
+  return [...notesKey].length === 1 ? notesKey : formatKeySpecForDisplay(notesKey);
 }
 var COMPOUND_KEY_DISPLAY = {
   pageup: "PageUp",
@@ -223,4 +251,52 @@ function formatAnswerScalar(a, _variant) {
   }
 }
 
-export { validateGuidanceFields, DEFAULT_COLLAPSE_KEY, COLLAPSE_KEY_OFF, resolveCollapseKey, formatKeySpecForDisplay, loadConfig, ROW_INTENT_META, sentinelsToAppend, I18N_NAMESPACE, t, displayLabel, formatAnswerScalar };
+// view/components/preview/preview-box-renderer.ts
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+var ANSI_SGR_RE = /\x1b\[[0-9;]*m/g;
+var ANSI_OSC8_RE = /\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+var FENCE_MARKER_RE = /^`{3}/;
+var BORDER_VERTICAL_OVERHEAD = 2;
+var BORDER_HORIZONTAL_OVERHEAD = 2;
+var BORDER_INNER_PADDING_HORIZONTAL = 1;
+var BOX_MIN_CONTENT_WIDTH = 40;
+function stripFenceMarkers(lines) {
+  return lines.filter((line) => {
+    const clean = line.replace(ANSI_SGR_RE, "").replace(ANSI_OSC8_RE, "");
+    return !FENCE_MARKER_RE.test(clean);
+  });
+}
+function renderBorderedBox(lines, width, colorFn, hidden = 0) {
+  const dashSpan = Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD);
+  const contentInner = Math.max(1, dashSpan - 2 * BORDER_INNER_PADDING_HORIZONTAL);
+  const pad = " ".repeat(BORDER_INNER_PADDING_HORIZONTAL);
+  const top = colorFn(`┌${"─".repeat(dashSpan)}┐`);
+  const out = [top];
+  for (const line of lines) {
+    const padded = truncateToWidth(line, contentInner, "", true);
+    out.push(`${colorFn("│")}${pad}${padded}${pad}${colorFn("│")}`);
+  }
+  if (hidden > 0) {
+    const indicator = ` ✂ ── ${hidden} lines hidden ── `;
+    const space = dashSpan - indicator.length;
+    const leftFill = "─".repeat(Math.max(0, Math.floor(space / 2)));
+    const rightFill = "─".repeat(Math.max(0, dashSpan - leftFill.length - indicator.length));
+    out.push(colorFn(`└${leftFill}${indicator}${rightFill}┘`));
+  } else {
+    out.push(colorFn(`└${"─".repeat(dashSpan)}┘`));
+  }
+  return out;
+}
+function computeBoxDimensions(contentLines, maxInnerWidth) {
+  let widest = Math.min(BOX_MIN_CONTENT_WIDTH, maxInnerWidth);
+  for (const line of contentLines) {
+    const w = visibleWidth(line.replace(/\s+$/, ""));
+    if (w > widest)
+      widest = w;
+  }
+  const innerWidth = Math.min(widest, maxInnerWidth);
+  const boxWidth = innerWidth + BORDER_HORIZONTAL_OVERHEAD + 2 * BORDER_INNER_PADDING_HORIZONTAL;
+  return { innerWidth, boxWidth };
+}
+
+export { validateGuidanceFields, DEFAULT_COLLAPSE_KEY, COLLAPSE_KEY_OFF, DEFAULT_NOTES_KEY, KEY_PLACEHOLDER, resolveCollapseKey, resolveNotesKey, formatNotesKeyForDisplay, formatKeySpecForDisplay, loadConfig, ROW_INTENT_META, sentinelsToAppend, I18N_NAMESPACE, t, displayLabel, NO_INPUT_PLACEHOLDER, formatAnswerScalar, BORDER_VERTICAL_OVERHEAD, BORDER_HORIZONTAL_OVERHEAD, BORDER_INNER_PADDING_HORIZONTAL, stripFenceMarkers, renderBorderedBox, computeBoxDimensions };

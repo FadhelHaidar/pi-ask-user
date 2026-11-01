@@ -62,4 +62,10 @@ export interface QuestionnaireRuntime {
 	 * the collapse shortcut is disabled.
 	 */
 	collapseKey: string;
+	/**
+	 * Key that opens the notes editor (`resolveNotesKey` output: `"n"` by default).
+	 * Matched against the typed character and its pi-tui key spec, so CSI-u input
+	 * and non-ASCII characters both work.
+	 */
+	notesKey: string;
 }

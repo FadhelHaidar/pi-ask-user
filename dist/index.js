@@ -1,7 +1,14 @@
 import {
+  ASK_USER_PROMPT_EVENT2,
+  ASK_USER_BLOCKED_EVENT2,
+  ASK_USER_ANSWER_EVENT2,
+  ASK_USER_ANSWER_RESULT_EVENT2
+} from "./chunks/index-pen3t92h.js";
+import {
   validateGuidanceFields,
   COLLAPSE_KEY_OFF,
   resolveCollapseKey,
+  resolveNotesKey,
   formatKeySpecForDisplay,
   loadConfig,
   ROW_INTENT_META,
@@ -9,20 +16,199 @@ import {
   I18N_NAMESPACE,
   t,
   displayLabel,
-  formatAnswerScalar
-} from "./chunks/index-x7fb685n.js";
-import {
-  ASK_USER_PROMPT_EVENT2,
-  ASK_USER_BLOCKED_EVENT2
-} from "./chunks/index-bx2tbz93.js";
+  NO_INPUT_PLACEHOLDER,
+  formatAnswerScalar,
+  stripFenceMarkers
+} from "./chunks/index-n7wxhdmh.js";
 
 // ask-user-question.ts
 import { isKeyRelease, isKeyRepeat, matchesKey } from "@earendil-works/pi-tui";
 
+// tool/external-answer.ts
+var reject = (code, reason) => ({ ok: false, code, reason });
+var isRecord = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+function noteOf(v) {
+  const trimmed = v?.trim();
+  return trimmed ? trimmed : undefined;
+}
+function resolveExternalAnswer(questions, payload) {
+  const { answers, globalNote, cancel } = payload;
+  if (cancel !== undefined && typeof cancel !== "boolean")
+    return reject("invalid_payload", "cancel must be a boolean");
+  if (globalNote !== undefined && typeof globalNote !== "string") {
+    return reject("invalid_payload", "globalNote must be a string");
+  }
+  const note = noteOf(globalNote);
+  const withNote = note ? { globalNote: note } : {};
+  if (cancel === true) {
+    if (answers !== undefined && !(Array.isArray(answers) && answers.length === 0)) {
+      return reject("invalid_payload", "cancel takes no answers");
+    }
+    return { ok: true, result: { answers: [], cancelled: true, ...withNote } };
+  }
+  if (!Array.isArray(answers))
+    return reject("invalid_payload", "answers must be an array");
+  const byQuestion = new Map;
+  for (const entry of answers) {
+    if (!isRecord(entry))
+      return reject("invalid_payload", "each answer must be an object");
+    const index = entry.questionIndex;
+    if (!Number.isInteger(index))
+      return reject("invalid_payload", "questionIndex must be an integer");
+    const i = index;
+    if (i < 0 || i >= questions.length) {
+      return reject("invalid_answer", `questionIndex ${i} out of range (0..${questions.length - 1})`);
+    }
+    if (byQuestion.has(i))
+      return reject("invalid_answer", `question ${i} answered twice`);
+    byQuestion.set(i, entry);
+  }
+  const resolved = [];
+  for (let i = 0;i < questions.length; i++) {
+    const entry = byQuestion.get(i);
+    if (!entry)
+      return reject("invalid_answer", `no answer for question ${i} ("${questions[i].header}")`);
+    const answer = resolveEntry(questions[i], i, entry);
+    if (!answer.ok)
+      return answer;
+    resolved.push(answer.answer);
+  }
+  return { ok: true, result: { answers: resolved, cancelled: false, ...withNote } };
+}
+function resolveEntry(q, i, entry) {
+  const { optionIndexes, text, notes } = entry;
+  if (optionIndexes !== undefined && (!Array.isArray(optionIndexes) || !optionIndexes.every(Number.isInteger))) {
+    return {
+      ok: false,
+      code: "invalid_payload",
+      reason: `question ${i}: optionIndexes must be an array of integers`
+    };
+  }
+  if (text !== undefined && typeof text !== "string") {
+    return { ok: false, code: "invalid_payload", reason: `question ${i}: text must be a string` };
+  }
+  if (notes !== undefined && typeof notes !== "string") {
+    return { ok: false, code: "invalid_payload", reason: `question ${i}: notes must be a string` };
+  }
+  const invalid = (reason) => ({
+    ok: false,
+    code: "invalid_answer",
+    reason: `question ${i}: ${reason}`
+  });
+  const picked = optionIndexes ?? [];
+  const out = picked.find((n) => n < 0 || n >= q.options.length);
+  if (out !== undefined)
+    return invalid(`option index ${out} out of range (0..${q.options.length - 1})`);
+  if (new Set(picked).size !== picked.length)
+    return invalid("option index repeated");
+  if (text !== undefined && text.trim().length === 0)
+    return invalid("text is blank");
+  if (picked.length === 0 && text === undefined)
+    return invalid("needs optionIndexes or text");
+  const base = { questionIndex: i, question: q.question };
+  const note = noteOf(notes);
+  const withNote = note ? { notes: note } : {};
+  if (q.multiSelect) {
+    const selected = q.options.filter((_o, n) => picked.includes(n)).map((o) => o.label);
+    return {
+      ok: true,
+      answer: { ...base, kind: "multi", answer: text ?? null, selected, ...withNote }
+    };
+  }
+  if (picked.length > 0 && text !== undefined)
+    return invalid("single-select takes optionIndexes or text, not both");
+  if (picked.length > 1)
+    return invalid(`single-select takes one option, got ${picked.length}`);
+  if (text !== undefined)
+    return { ok: true, answer: { ...base, kind: "custom", answer: text, ...withNote } };
+  const option = q.options[picked[0]];
+  const withPreview = option.preview && option.preview.length > 0 ? { preview: option.preview } : {};
+  return { ok: true, answer: { ...base, kind: "option", answer: option.label, ...withPreview, ...withNote } };
+}
+
+// answer-channel.ts
+class OpenQuestionnaire {
+  toolCallId;
+  questions;
+  host;
+  result;
+  deliver;
+  resolveEarly;
+  answeredEarly = new Promise((resolve) => {
+    this.resolveEarly = resolve;
+  });
+  constructor(toolCallId, questions, host) {
+    this.toolCallId = toolCallId;
+    this.questions = questions;
+    this.host = host;
+  }
+  get settled() {
+    return this.result;
+  }
+  attach(done) {
+    this.deliver = done;
+  }
+  settle(result) {
+    if (this.result)
+      return false;
+    this.result = result;
+    this.resolveEarly(result);
+    this.deliver?.(result);
+    return true;
+  }
+}
+var isRecord2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+function registerAnswerChannel(pi) {
+  const open = new Map;
+  pi.events.on(ASK_USER_ANSWER_EVENT2, (data) => {
+    const payload = isRecord2(data) ? data : {};
+    const requestId = typeof payload.requestId === "string" ? payload.requestId : undefined;
+    const toolCallId = typeof payload.toolCallId === "string" ? payload.toolCallId : undefined;
+    const reply = (code, reason) => {
+      const verdict = {
+        ok: code === undefined,
+        ...code ? { code, reason } : {},
+        ...requestId !== undefined ? { requestId } : {},
+        ...toolCallId !== undefined ? { toolCallId } : {}
+      };
+      pi.events.emit(ASK_USER_ANSWER_RESULT_EVENT2, verdict);
+    };
+    if (!isRecord2(data))
+      return reply("invalid_payload", "payload must be an object");
+    if (payload.requestId !== undefined && requestId === undefined) {
+      return reply("invalid_payload", "requestId must be a string");
+    }
+    if (toolCallId === undefined)
+      return reply("invalid_payload", "toolCallId must be a string");
+    const target = open.get(toolCallId);
+    if (!target || target.settled)
+      return reply("not_found", `no open questionnaire for tool call ${toolCallId}`);
+    if (target.host === "rpc")
+      return reply("unsupported_host", "this host shows the questions in its own dialogs");
+    const outcome = resolveExternalAnswer(target.questions, payload);
+    if (!outcome.ok)
+      return reply(outcome.code, outcome.reason);
+    if (!target.settle(outcome.result))
+      return reply("not_found", `tool call ${toolCallId} is already answered`);
+    reply();
+  });
+  return {
+    open(toolCallId, questions, host) {
+      const questionnaire = new OpenQuestionnaire(toolCallId, questions, host);
+      open.set(toolCallId, questionnaire);
+      return questionnaire;
+    },
+    close(questionnaire) {
+      if (open.get(questionnaire.toolCallId) === questionnaire)
+        open.delete(questionnaire.toolCallId);
+    }
+  };
+}
+
 // rpc-fallback.ts
-var MULTI_SELECT_INSTRUCTIONS = 'Enter the numbers of all that apply, comma-separated (e.g. "1,3"), or type a custom answer as plain text.';
+var MULTI_SELECT_INSTRUCTIONS = 'Enter the numbers of all that apply, comma-separated (e.g. "1,3"). Add "; custom answer" to include your own text, or type only custom text.';
 var CUSTOM_ANSWER_TITLE = "Type your answer:";
-var MULTI_SELECT_PLACEHOLDER = "1,3";
+var MULTI_SELECT_PLACEHOLDER = "1,3; custom answer";
 var MAX_PREVIEW_CHARS = 600;
 function hasDialogUI(ui) {
   const u = ui;
@@ -62,9 +248,12 @@ async function askSingleSelect(ui, q, questionIndex, header) {
   const chosen = await ui.select(`${header}${q.question}${buildPreviewBlock(q)}`, options);
   if (chosen == null)
     return;
-  const idx = parseIndex(chosen, options.length);
-  if (idx == null)
+  const reply = chosen.trim();
+  if (reply.length === 0)
     return;
+  const idx = resolveSingleSelectReply(chosen, reply, options, q);
+  if (idx === undefined)
+    return { questionIndex, question: q.question, kind: "custom", answer: reply };
   if (idx < q.options.length) {
     const o = q.options[idx];
     return {
@@ -77,10 +266,22 @@ async function askSingleSelect(ui, q, questionIndex, header) {
   }
   const typed = await ui.input(`${header}${q.question}
 
+${q.options.map(formatOptionLine).join(`
+`)}
+
 ${t("rpc.custom_answer_title", CUSTOM_ANSWER_TITLE)}`, "");
   if (typed == null)
     return;
   return { questionIndex, question: q.question, kind: "custom", answer: typed };
+}
+function resolveSingleSelectReply(chosen, reply, lines, q) {
+  const line = lines.indexOf(chosen);
+  if (line >= 0)
+    return line;
+  if (/^\d+\.?$/.test(reply))
+    return parseIndex(reply, lines.length) ?? undefined;
+  const label = q.options.findIndex((o) => o.label === reply);
+  return label >= 0 ? label : undefined;
 }
 async function askMultiSelect(ui, q, questionIndex, header) {
   const list = q.options.map(formatOptionLine).join(`
@@ -96,18 +297,99 @@ ${t("rpc.multi_instructions", MULTI_SELECT_INSTRUCTIONS)}`, MULTI_SELECT_PLACEHO
   if (trimmed.length === 0) {
     return { questionIndex, question: q.question, kind: "multi", answer: null, selected: [] };
   }
-  const tokens = trimmed.split(/[,\s]+/).filter((tok) => tok.length > 0);
+  const [selectionPart = "", ...customParts] = trimmed.split(";");
+  const selection = selectionPart.trim();
+  const custom = customParts.join(";").trim();
+  const tokens = selection.split(/[,\s]+/).filter((tok) => tok.length > 0);
   const indices = tokens.map((tok) => /^\d+\.?$/.test(tok) ? parseIndex(tok, q.options.length) : null);
-  if (indices.every((i) => i != null)) {
+  if (selection.length === 0 || indices.every((i) => i != null)) {
     const selected = [];
     for (const i of indices) {
+      if (i == null)
+        continue;
       const label = q.options[i].label;
       if (!selected.includes(label))
         selected.push(label);
     }
-    return { questionIndex, question: q.question, kind: "multi", answer: null, selected };
+    return {
+      questionIndex,
+      question: q.question,
+      kind: "multi",
+      answer: custom.length > 0 ? custom : null,
+      selected
+    };
   }
-  return { questionIndex, question: q.question, kind: "custom", answer: trimmed };
+  return { questionIndex, question: q.question, kind: "multi", answer: trimmed, selected: [] };
+}
+
+// presentation.ts
+var INLINE_ROW_RATIO = 0.7;
+var INLINE_MIN_ROWS = 12;
+var fullRowBudget = (terminalRows) => terminalRows;
+var HOST_ALLOCATED_ROWS = Symbol.for("rpiv-ask-user-question:host-allocated-rows");
+function hostAllocatesRows(terminal) {
+  return typeof terminal === "object" && terminal !== null && terminal[HOST_ALLOCATED_ROWS] === true;
+}
+function rowBudgetForHost(terminal, budget) {
+  return hostAllocatesRows(terminal) ? fullRowBudget : budget;
+}
+var YIELD_TO_OVERLAY = Object.freeze({
+  answers: [],
+  cancelled: true
+});
+function mustYieldInlineSlot(tui) {
+  if (hostAllocatesRows(tui.terminal))
+    return false;
+  const probe = overlayProbe(tui);
+  if (probe)
+    return probe() !== undefined;
+  return typeof tui.hasOverlay === "function" && tui.hasOverlay();
+}
+function overlayProbe(tui) {
+  const { getTopmostVisibleOverlay } = tui;
+  return typeof getTopmostVisibleOverlay === "function" ? () => getTopmostVisibleOverlay.call(tui) : undefined;
+}
+function topOverlayComponent(tui) {
+  let top;
+  try {
+    top = overlayProbe(tui)?.()?.component;
+  } catch {
+    return;
+  }
+  return typeof top === "object" && top !== null ? top : undefined;
+}
+function focusOverlayComponent(tui, component) {
+  const { setFocus } = tui;
+  if (typeof setFocus === "function")
+    setFocus.call(tui, component);
+}
+var inlineRowBudget = (terminalRows) => Math.min(terminalRows, Math.max(INLINE_MIN_ROWS, Math.floor(terminalRows * INLINE_ROW_RATIO)));
+var inlineSlotHeld = false;
+function claimInlineSlot() {
+  if (inlineSlotHeld)
+    return;
+  inlineSlotHeld = true;
+  let released = false;
+  return () => {
+    if (released)
+      return;
+    released = true;
+    inlineSlotHeld = false;
+  };
+}
+var OVERLAY_PRESENTATION = Object.freeze({
+  overlay: true,
+  rowBudget: fullRowBudget,
+  hideOnCollapse: true
+});
+var STACKED_OVERLAY_PRESENTATION = Object.freeze({
+  overlay: true,
+  rowBudget: fullRowBudget,
+  hideOnCollapse: false
+});
+function resolvePresentation() {
+  const release = claimInlineSlot();
+  return release ? { overlay: false, rowBudget: inlineRowBudget, release } : OVERLAY_PRESENTATION;
 }
 
 // tool/normalize-params.ts
@@ -133,6 +415,39 @@ function normalizeQuestionParams(params) {
     }))
   };
 }
+function prepareQuestionArguments(args) {
+  if (!isJsonRecord(args))
+    return args;
+  const questions = decodeArray(args.questions);
+  if (!questions)
+    return args;
+  const decoded = questions.map((q) => {
+    const question = decodeObject(q);
+    if (!question)
+      return q;
+    const options = decodeArray(question.options);
+    return options ? { ...question, options: options.map((o) => decodeObject(o) ?? o) } : question;
+  });
+  return { ...args, questions: decoded };
+}
+function isJsonRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function decodeArray(value) {
+  const parsed = typeof value === "string" ? parseJson(value) : value;
+  return Array.isArray(parsed) ? parsed : undefined;
+}
+function decodeObject(value) {
+  const parsed = typeof value === "string" ? parseJson(value) : value;
+  return isJsonRecord(parsed) ? parsed : undefined;
+}
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return;
+  }
+}
 
 // tool/response-envelope.ts
 var DECLINE_MESSAGE = "User declined to answer questions";
@@ -147,18 +462,27 @@ function buildQuestionnaireResponse(result, params) {
     });
   }
   const segments = [];
+  const unanswered = [];
   for (let i = 0;i < params.questions.length; i++) {
     const a = result.answers.find((x) => x.questionIndex === i);
     if (a)
       segments.push(buildAnswerSegment(a));
+    else
+      unanswered.push(i);
   }
-  if (result.globalNote && result.globalNote.length > 0) {
-    segments.push(`global note: ${result.globalNote}.`);
-  }
-  if (segments.length === 0) {
+  const hasGlobalNote = result.globalNote !== undefined && result.globalNote.length > 0;
+  if (segments.length === 0 && !hasGlobalNote) {
     return buildToolResult(DECLINE_MESSAGE, { answers: result.answers, cancelled: true });
   }
-  return buildToolResult(`${ENVELOPE_PREFIX} ${segments.join(" ")} ${ENVELOPE_SUFFIX}`, result);
+  if (unanswered.length > 0)
+    segments.push(buildUnansweredSegment(unanswered, params));
+  if (hasGlobalNote)
+    segments.push(`global note: ${result.globalNote}.`);
+  const details = unanswered.length > 0 ? { ...result, unanswered } : result;
+  return buildToolResult(`${ENVELOPE_PREFIX} ${segments.join(" ")} ${ENVELOPE_SUFFIX}`, details);
+}
+function buildUnansweredSegment(indexes, params) {
+  return `unanswered: ${indexes.map((i) => `"${params.questions[i]?.question}"`).join(", ")}.`;
 }
 function buildAnswerSegment(a) {
   const parts = [`"${a.question}"="${formatAnswerScalar(a, "envelope")}"`];
@@ -221,6 +545,12 @@ var QuestionsSchema = Type.Array(QuestionSchema, {
 var QuestionParamsSchema = Type.Object({
   questions: QuestionsSchema
 });
+function isQuestionnaireResult(value) {
+  if (!value || typeof value !== "object")
+    return false;
+  const v = value;
+  return Array.isArray(v.answers) && typeof v.cancelled === "boolean";
+}
 
 // tool/validate-questionnaire.ts
 var ERROR_NO_QUESTIONS = "Error: At least one question is required";
@@ -266,9 +596,99 @@ function validateQuestionnaire(typed) {
   return { ok: true };
 }
 
+// view/transcript.ts
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+var INDENT = "  ";
+var COLUMN_GAP = "  ";
+var RECOMMENDED_SUFFIX = /\s*\(Recommended\)$/;
+
+class WidthLines {
+  layout;
+  constructor(layout) {
+    this.layout = layout;
+  }
+  render(width) {
+    return this.layout(width);
+  }
+  invalidate() {}
+}
+function renderAskCall(args, theme) {
+  const headers = (args?.questions ?? []).map((q) => q?.header).filter(Boolean);
+  const title = theme.fg("toolTitle", theme.bold("Ask"));
+  const text = headers.length > 0 ? `${title} ${theme.fg("accent", headers.join(" · "))}` : title;
+  return new WidthLines((width) => [truncateToWidth(text, width, "…")]);
+}
+function renderAskResult(result, args, theme, options) {
+  const details = isQuestionnaireResult(result.details) ? result.details : undefined;
+  if (options.isError || details?.error) {
+    return new WidthLines(() => [theme.fg("error", `✗ ${firstTextLine(result)}`)]);
+  }
+  if (!details)
+    return new WidthLines(() => [theme.fg("success", "✓")]);
+  if (details.cancelled) {
+    return new WidthLines(() => [theme.fg("dim", `✗ ${t("transcript.no_answer", "no answer")}`)]);
+  }
+  const questions = args?.questions ?? [];
+  return new WidthLines((width) => questions.length > 1 ? tableLines(details, args, theme, options.expanded, width) : singleLines(details, questions[0]?.question, theme, options.expanded, width));
+}
+function singleLines(details, questionText, theme, expanded, width) {
+  const answer = details.answers[0];
+  const lines = hanging(`${theme.fg("success", "✓")} `, answerText(answer, theme), width);
+  lines.push(...detailLines(answer, expanded ? questionText : undefined, INDENT, theme, width));
+  return [...lines, ...globalNoteLines(details, theme, width)];
+}
+function tableLines(details, args, theme, expanded, width) {
+  const headerWidth = Math.max(...args.questions.map((q) => visibleWidth(q.header)));
+  const answerIndent = " ".repeat(INDENT.length + headerWidth + COLUMN_GAP.length);
+  const lines = args.questions.flatMap((q, i) => {
+    const answer = details.answers.find((a) => a.questionIndex === i);
+    const header = q.header + " ".repeat(headerWidth - visibleWidth(q.header));
+    const row = hanging(`${INDENT}${theme.fg("muted", header)}${COLUMN_GAP}`, answerText(answer, theme), width);
+    return [...row, ...detailLines(answer, expanded ? q.question : undefined, answerIndent, theme, width)];
+  });
+  return [...lines, ...globalNoteLines(details, theme, width)];
+}
+function detailLines(answer, questionText, indent, theme, width) {
+  const lines = [];
+  if (questionText)
+    lines.push(...hanging(indent, theme.fg("dim", questionText), width));
+  if (questionText && answer?.preview) {
+    for (const line of stripFenceMarkers(answer.preview.split(`
+`))) {
+      lines.push(truncateToWidth(`${indent}${theme.fg("dim", `│ ${line}`)}`, width, "…"));
+    }
+  }
+  if (answer?.notes)
+    lines.push(...hanging(indent, theme.fg("dim", `✎ ${answer.notes}`), width));
+  return lines;
+}
+function globalNoteLines(details, theme, width) {
+  return details.globalNote ? hanging(INDENT, theme.fg("dim", `✎ ${details.globalNote}`), width) : [];
+}
+function answerText(answer, theme) {
+  if (!answer)
+    return theme.fg("dim", t("transcript.not_answered", "not answered"));
+  const typed = answer.answer ? `"${answer.answer}"` : undefined;
+  const picks = answer.kind === "option" ? [label(answer.answer ?? "")] : answer.kind === "custom" ? [typed] : [...(answer.selected ?? []).map(label), typed];
+  return theme.fg("toolOutput", picks.filter(Boolean).join(", ") || NO_INPUT_PLACEHOLDER);
+}
+function label(text) {
+  return text.replace(RECOMMENDED_SUFFIX, "");
+}
+function hanging(prefix, text, width) {
+  const indent = visibleWidth(prefix);
+  return wrapTextWithAnsi(text, Math.max(1, width - indent)).map((line, i) => (i === 0 ? prefix : " ".repeat(indent)) + line);
+}
+function firstTextLine(result) {
+  const text = result.content.find((c) => c.type === "text")?.text ?? "";
+  return text.split(`
+`)[0] ?? "";
+}
+
 // ask-user-question.ts
-function emitAskUserPromptEvent(pi, params) {
+function emitAskUserPromptEvent(pi, params, toolCallId) {
   const payload = {
+    toolCallId,
     questions: params.questions.map((q) => ({
       question: q.question,
       header: q.header,
@@ -282,20 +702,20 @@ function emitAskUserPromptEvent(pi, params) {
   };
   pi.events.emit(ASK_USER_PROMPT_EVENT2, payload);
 }
-function emitAskUserBlockedEvent(pi, active) {
-  const payload = { active };
+function emitAskUserBlockedEvent(pi, active, toolCallId) {
+  const payload = { active, toolCallId };
   pi.events.emit(ASK_USER_BLOCKED_EVENT2, payload);
 }
 function rejectWithoutUi() {
   return buildToolResult(ERROR_NO_UI, { answers: [], cancelled: true, error: "no_ui" });
 }
-async function runRpcPath(pi, ui, typed) {
-  emitAskUserBlockedEvent(pi, true);
+async function runRpcPath(pi, ui, typed, toolCallId) {
+  emitAskUserBlockedEvent(pi, true, toolCallId);
   try {
     emitTerminalAttention();
     return buildQuestionnaireResponse(await runRpcQuestionnaire(ui, typed), typed);
   } finally {
-    emitAskUserBlockedEvent(pi, false);
+    emitAskUserBlockedEvent(pi, false, toolCallId);
   }
 }
 var ASK_USER_QUESTION_TOOL_NAME = "ask_user_question";
@@ -314,7 +734,7 @@ var PREWARM_DELAY_MS = 2000;
 async function loadQuestionnaireSession() {
   let mod;
   try {
-    mod = await import("./chunks/questionnaire-session-j2wmt696.js");
+    mod = await import("./chunks/questionnaire-session-m053x4ka.js");
   } catch (e) {
     const cause = e instanceof Error ? e.message : String(e);
     return { ok: false, error: "session_load_failed", message: `${ERROR_SESSION_LOAD_FAILED} (cause: ${cause})` };
@@ -352,14 +772,35 @@ function registerCollapseKeyListener(ctx, collapseKey, sessionRef, overlayHandle
   });
 }
 function makeSessionFactory(config) {
-  const { ctx, typed, itemsByTab, collapseKey, canReopenWhileHidden, sessionRef, Session } = config;
+  const {
+    ctx,
+    typed,
+    itemsByTab,
+    collapseKey,
+    notesKey,
+    canReopenWhileHidden,
+    presentation,
+    open,
+    sessionRef,
+    overlayHandleRef,
+    Session
+  } = config;
   return (tui, theme, keybindings, done) => {
+    if (!presentation.overlay && mustYieldInlineSlot(tui)) {
+      done(YIELD_TO_OVERLAY);
+      return INERT_COMPONENT;
+    }
+    if (open.settled) {
+      if (!presentation.overlay)
+        done(open.settled);
+      return INERT_COMPONENT;
+    }
     const session = new Session({
       tui,
       theme,
       params: typed,
       itemsByTab,
-      done,
+      done: (result) => open.settle(result),
       keybindings,
       editInput: async (value) => {
         try {
@@ -380,12 +821,29 @@ function makeSessionFactory(config) {
         }
       },
       collapseKey,
-      canReopenWhileHidden
+      notesKey,
+      canReopenWhileHidden,
+      rowBudget: rowBudgetForHost(tui.terminal, presentation.rowBudget)
     });
     sessionRef.current = session;
+    open.attach((result) => {
+      if (presentation.overlay) {
+        overlayHandleRef.current?.hide();
+        return;
+      }
+      done(result);
+      const top = topOverlayComponent(tui);
+      if (top !== undefined && top !== session.component)
+        focusOverlayComponent(tui, top);
+    });
     return session.component;
   };
 }
+var INERT_COMPONENT = {
+  render: () => [],
+  invalidate: () => {},
+  handleInput: () => {}
+};
 async function resolveUndefinedResult(ctx, typed) {
   if (hasDialogUI(ctx.ui)) {
     return buildQuestionnaireResponse(await runRpcQuestionnaire(ctx.ui, typed), typed);
@@ -437,6 +895,7 @@ Use the optional \`preview\` field on options when presenting concrete artifacts
 Preview content is rendered as markdown in a monospace box. Multi-line text with newlines is supported. When any option has a preview, the UI switches to a side-by-side layout with a vertical option list on the left and preview on the right. Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).`;
 function registerAskUserQuestionTool(pi) {
   const guidance = validateGuidanceFields(loadConfig().guidance);
+  const answers = registerAnswerChannel(pi);
   pi.registerTool({
     name: ASK_USER_QUESTION_TOOL_NAME,
     label: "Ask User Question",
@@ -444,7 +903,11 @@ function registerAskUserQuestionTool(pi) {
     promptSnippet: guidance.promptSnippet ?? DEFAULT_PROMPT_SNIPPET,
     promptGuidelines: guidance.promptGuidelines ?? DEFAULT_PROMPT_GUIDELINES,
     parameters: QuestionParamsSchema,
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    prepareArguments: prepareQuestionArguments,
+    exposure: "model-only",
+    renderCall: (args, theme) => renderAskCall(args, theme),
+    renderResult: (result, { expanded }, theme, context) => renderAskResult(result, context?.args, theme, { expanded, isError: context?.isError ?? false }),
+    async execute(toolCallId, params, _signal, _onUpdate, ctx) {
       const typed = normalizeQuestionParams(params);
       if (!ctx.hasUI)
         return rejectWithoutUi();
@@ -456,56 +919,87 @@ function registerAskUserQuestionTool(pi) {
           error: validation.error
         });
       }
-      emitAskUserPromptEvent(pi, typed);
-      if (ctx.mode === "rpc" && hasDialogUI(ctx.ui)) {
-        return runRpcPath(pi, ctx.ui, typed);
-      }
-      const itemsByTab = typed.questions.map((q) => buildItemsForQuestion(q));
-      const sessionLoad = await loadQuestionnaireSession();
-      if (!sessionLoad.ok) {
-        return buildToolResult(sessionLoad.message, { answers: [], cancelled: true, error: sessionLoad.error });
-      }
-      const { QuestionnaireSession } = sessionLoad.module;
-      const collapseKey = resolveCollapseKey(loadConfig());
-      const sessionRef = { current: null };
-      const overlayHandleRef = { current: undefined };
-      const removeOverlayInputListener = registerCollapseKeyListener(ctx, collapseKey, sessionRef, overlayHandleRef);
-      const canReopenWhileHidden = removeOverlayInputListener !== undefined;
-      emitAskUserBlockedEvent(pi, true);
+      const viaRpc = ctx.mode === "rpc" && hasDialogUI(ctx.ui);
+      const open = answers.open(toolCallId, typed.questions, viaRpc ? "rpc" : "tui");
       try {
-        emitTerminalAttention();
-        const result = await ctx.ui.custom(makeSessionFactory({
-          ctx,
-          typed,
-          itemsByTab,
-          collapseKey,
-          canReopenWhileHidden,
-          sessionRef,
-          Session: QuestionnaireSession
-        }), {
-          overlay: true,
-          overlayOptions: {
-            anchor: "bottom-center",
-            width: "100%",
-            maxHeight: "100%",
-            margin: { left: 0, right: 0, bottom: 0 }
-          },
-          onHandle: (handle) => {
-            overlayHandleRef.current = handle;
-            sessionRef.current?.setOverlayHandle(handle);
-          }
-        });
-        if (result === undefined) {
-          return resolveUndefinedResult(ctx, typed);
-        }
-        return buildQuestionnaireResponse(result, typed);
+        emitAskUserPromptEvent(pi, typed, toolCallId);
+        if (viaRpc)
+          return await runRpcPath(pi, ctx.ui, typed, toolCallId);
+        return await runTuiPath(pi, ctx, typed, open, toolCallId);
       } finally {
-        removeOverlayInputListener?.();
-        emitAskUserBlockedEvent(pi, false);
+        answers.close(open);
       }
     }
   });
   prewarmSessionGraph();
+}
+async function runTuiPath(pi, ctx, typed, open, toolCallId) {
+  const itemsByTab = typed.questions.map((q) => buildItemsForQuestion(q));
+  let presentation;
+  let removeOverlayInputListener;
+  emitAskUserBlockedEvent(pi, true, toolCallId);
+  try {
+    const sessionLoad = await loadQuestionnaireSession();
+    if (open.settled)
+      return buildQuestionnaireResponse(open.settled, typed);
+    if (!sessionLoad.ok) {
+      return buildToolResult(sessionLoad.message, { answers: [], cancelled: true, error: sessionLoad.error });
+    }
+    const { QuestionnaireSession } = sessionLoad.module;
+    const collapseKey = resolveCollapseKey(loadConfig());
+    const notesKey = resolveNotesKey(loadConfig());
+    const sessionRef = { current: null };
+    const overlayHandleRef = { current: undefined };
+    presentation = resolvePresentation();
+    removeOverlayInputListener = presentation.hideOnCollapse ? registerCollapseKeyListener(ctx, collapseKey, sessionRef, overlayHandleRef) : undefined;
+    const canReopenWhileHidden = removeOverlayInputListener !== undefined;
+    const mount = (p) => Promise.race([
+      ctx.ui.custom(makeSessionFactory({
+        ctx,
+        typed,
+        itemsByTab,
+        collapseKey,
+        notesKey,
+        canReopenWhileHidden,
+        presentation: p,
+        open,
+        sessionRef,
+        overlayHandleRef,
+        Session: QuestionnaireSession
+      }), p.overlay ? {
+        overlay: true,
+        overlayOptions: {
+          anchor: "bottom-center",
+          width: "100%",
+          maxHeight: "100%",
+          margin: { left: 0, right: 0, bottom: 0 }
+        },
+        onHandle: (handle) => {
+          overlayHandleRef.current = handle;
+          sessionRef.current?.setOverlayHandle(handle);
+          if (open.settled)
+            handle.hide();
+        }
+      } : { overlay: false }),
+      open.answeredEarly
+    ]);
+    emitTerminalAttention();
+    let result = await mount(presentation);
+    if (result === YIELD_TO_OVERLAY) {
+      presentation.release?.();
+      presentation = STACKED_OVERLAY_PRESENTATION;
+      result = await mount(presentation);
+    }
+    if (result === undefined) {
+      open.host = "rpc";
+      return await resolveUndefinedResult(ctx, typed);
+    }
+    return buildQuestionnaireResponse(result, typed);
+  } finally {
+    presentation?.release?.();
+    removeOverlayInputListener?.();
+    emitAskUserBlockedEvent(pi, false, toolCallId);
+  }
 }
 
 // reconcile.ts
@@ -532,6 +1026,8 @@ function pi_ask_user_default(pi) {
   registerAskUserQuestionReconciler(pi);
 }
 export {
+  ASK_USER_ANSWER_EVENT2 as ASK_USER_ANSWER_EVENT,
+  ASK_USER_ANSWER_RESULT_EVENT2 as ASK_USER_ANSWER_RESULT_EVENT,
   ASK_USER_BLOCKED_EVENT2 as ASK_USER_BLOCKED_EVENT,
   ASK_USER_PROMPT_EVENT2 as ASK_USER_PROMPT_EVENT,
   pi_ask_user_default as default

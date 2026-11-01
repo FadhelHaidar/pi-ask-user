@@ -22,7 +22,11 @@ vi.mock("@earendil-works/pi-tui", async (orig) => {
 });
 
 import type { QuestionData } from "../../../tool/types.js";
-import { NOTES_AFFORDANCE_TEXT, PreviewBlockRenderer } from "./preview-block-renderer.js";
+import {
+	NOTES_AFFORDANCE_TEXT,
+	NOTES_EDIT_AFFORDANCE_TEXT,
+	PreviewBlockRenderer,
+} from "./preview-block-renderer.js";
 
 const theme = makeTheme() as unknown as Theme;
 const markdownTheme = {
@@ -101,6 +105,13 @@ describe("PreviewBlockRenderer.renderBlock", () => {
 	it("hides affordance when focused=false (cursor elsewhere)", () => {
 		const r = new PreviewBlockRenderer({ question: previewQuestion, theme, markdownTheme });
 		const lines = r.renderBlock(60, 0, "side-by-side", false, false);
+		expect(lines.some((l) => l.includes(NOTES_AFFORDANCE_TEXT))).toBe(false);
+	});
+
+	it("offers `edit` instead of `add` once a note exists (#197)", () => {
+		const r = new PreviewBlockRenderer({ question: previewQuestion, theme, markdownTheme });
+		const lines = r.renderBlock(60, 0, "side-by-side", true, false, true);
+		expect(lines.some((l) => l.includes(NOTES_EDIT_AFFORDANCE_TEXT))).toBe(true);
 		expect(lines.some((l) => l.includes(NOTES_AFFORDANCE_TEXT))).toBe(false);
 	});
 

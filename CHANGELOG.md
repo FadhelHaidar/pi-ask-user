@@ -32,6 +32,40 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Port of the compatible upstream 2.13.0–2.15.0 changes onto this fork.
+
+### Added
+
+- Compact transcript receipts: `ask_user_question` calls now render as `Ask` with the question headers and a `✓ answer` line (or one aligned row per question), instead of an argument JSON dump. Ctrl+O adds the question text, preview and notes. Model output is unchanged.
+- `notesKey` config setting for non-Latin keyboard layouts, plus CSI-u key matching so `n` works in terminals using the Kitty keyboard protocol.
+- Digit shortcuts: `1`–`9` answer a single-select question, toggle a multi-select row, or move to `Type something.`. Digits remain text inside the answer and notes editors.
+- A saved note stays visible as a `Note for this answer: …` row, and the preview hint becomes `Note saved: press <key> to edit`. All 9 locales updated.
+- Inline presentation: the dialog opens in Pi's editor area, capped at 70% of the terminal height (at least 12 rows), and falls back to an overlay when another questionnaire or a capturing overlay holds the screen.
+- Inbound `rpiv:ask-user:answer` event with `rpiv:ask-user:answer-result` verdicts, for programs answering a questionnaire without synthesizing keystrokes. Questionnaires are named by `toolCallId`, now carried on the prompt and blocked events; validation is strict and all-or-nothing, and the first answer wins.
+- `exposure: "model-only"` so the tool stays available to the model under codemode `"only"`.
+
+### Changed
+
+- A partial submit now tells the model which questions were left blank: the envelope gains an `unanswered: "<question>"` segment and `details.unanswered`. Fully answered output is byte-identical.
+- Going back to an answered question puts the cursor on your answer (or on `Next` for multi-select) instead of option 1.
+- RPC hosts: a typed reply that is not an option number is the user's own answer instead of a dismissal; multi-select accepts `1,3; custom answer`; JSON-encoded `questions`/`options` strings are decoded before validation.
+- The dialog's body scrolls around the focused row, keeps the header pinned, trims padding before content, and scrolls to the notes editor.
+
+### Fixed
+
+- The runtime import cycle between `view/dialog-builder.ts` and `view/tab-content-strategy.ts`, which hangs under esbuild bundling; shared copy moved to `view/dialog-copy.ts`.
+- Overflow arrows no longer overwrite the focused row, and a dialog no longer draws its footer twice.
+- An outside answer to a questionnaire that is not the top overlay now removes exactly that overlay and completes its tool call, instead of closing whichever overlay is on top (which left that call waiting forever). An inline dialog closed from outside hands the keyboard back to the overlay still on screen.
+- A multiline note stays scrolled to the editing cursor instead of to the end of the note block.
+- A wrongly typed `notesKey` (e.g. `7`) falls back to `n` instead of failing the questionnaire.
+
+### Not adopted from upstream
+
+- Space toggling multi-select checkboxes — Space stays ordinary text while typing.
+- Automatic checking of custom text, and draft clearing on confirm — this fork keeps explicit custom checkboxes and retained drafts.
+- The blank custom-answer guard on single-select, and the changed RPC blank/cancel loop; blank answers still commit here.
+- `.ts` import specifiers and upstream monorepo packaging — this fork ships compiled JavaScript.
+
 ## [2.12.0] - 2026-09-30
 
 ### Fixed

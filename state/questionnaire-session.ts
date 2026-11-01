@@ -22,6 +22,8 @@ export interface QuestionnaireSessionConfig {
 	editInput: (value: string) => Promise<string | undefined>;
 	/** Key spec for the collapse/expand shortcut, e.g. `"ctrl+]"` or `"alt+o"`. */
 	collapseKey: string;
+	/** Key that opens the notes editor (`resolveNotesKey` output). */
+	notesKey: string;
 	/**
 	 * True iff `execute()` registered the raw `ctx.ui.onTerminalInput` listener — the only
 	 * path that can reach a hidden overlay. Gates the `set_overlay_hidden` effect: a host
@@ -30,6 +32,8 @@ export interface QuestionnaireSessionConfig {
 	 * would hide the overlay into a state nothing can reopen.
 	 */
 	canReopenWhileHidden: boolean;
+	/** Terminal rows → rows the dialog may render; an inline mount caps it (`presentation.ts`). */
+	rowBudget?: (terminalRows: number) => number;
 }
 
 export interface QuestionnaireSessionComponent {
@@ -73,6 +77,7 @@ export class QuestionnaireSession {
 	private readonly keybindings: QuestionnaireRuntime["keybindings"];
 	private readonly editInput: QuestionnaireSessionConfig["editInput"];
 	private readonly collapseKey: string;
+	private readonly notesKey: string;
 	private readonly canReopenWhileHidden: boolean;
 	private inputEditorOpen = false;
 
@@ -96,6 +101,7 @@ export class QuestionnaireSession {
 		this.keybindings = config.keybindings;
 		this.editInput = config.editInput;
 		this.collapseKey = config.collapseKey;
+		this.notesKey = config.notesKey;
 		this.canReopenWhileHidden = config.canReopenWhileHidden;
 
 		const built = buildQuestionnaire({
@@ -107,6 +113,8 @@ export class QuestionnaireSession {
 			initialState: this.state,
 			getCurrentTab: () => this.state.currentTab,
 			collapseKey: this.collapseKey,
+			notesKey: this.notesKey,
+			rowBudget: config.rowBudget,
 		});
 
 		this.notesInput = built.notesInput;
@@ -247,6 +255,7 @@ export class QuestionnaireSession {
 			currentItem: this.currentItem(),
 			items: this.itemsByTab[this.state.currentTab] ?? [],
 			collapseKey: this.collapseKey,
+			notesKey: this.notesKey,
 		};
 	}
 

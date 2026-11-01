@@ -400,14 +400,14 @@ describe("buildQuestionnaireResponse — global note", () => {
 		);
 	});
 
-	it("zero answers + note is NOT a decline — answered envelope with details by reference", () => {
+	it("zero answers + note is NOT a decline — answered envelope naming the blank question", () => {
 		const result: QuestionnaireResult = { cancelled: false, answers: [], globalNote: "note alone" };
 		const r = buildQuestionnaireResponse(result, params);
 		expect(r.content[0].text.startsWith("User has answered your questions:")).toBe(true);
+		expect(r.content[0].text).toContain('unanswered: "Pick?".');
 		expect(r.content[0].text).toContain("global note:");
 		expect(r.details.cancelled).toBe(false);
 		expect(r.details.globalNote).toBe("note alone");
-		expect(r.details).toBe(result);
 	});
 
 	it("cancelled + note: DECLINE_MESSAGE text, answers forwarded AND globalNote preserved in details", () => {
@@ -428,6 +428,42 @@ describe("buildQuestionnaireResponse — global note", () => {
 		const r = buildQuestionnaireResponse(result, params);
 		expect(r.content[0].text).toBe("User declined to answer questions");
 		expect(r.details).toEqual({ answers: [], cancelled: true });
+	});
+});
+
+describe("buildQuestionnaireResponse — skipped questions", () => {
+	const params: QuestionParams = {
+		questions: [
+			{ question: "First?", header: "F", options: [{ label: "A", description: "a" }] },
+			{ question: "Second?", header: "S", options: [{ label: "B", description: "b" }] },
+		],
+	};
+
+	it("names the questions left blank in an 'unanswered:' segment and exposes their indexes", () => {
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [{ questionIndex: 1, question: "Second?", kind: "option", answer: "B" }],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0].text).toBe(
+			'User has answered your questions: "Second?"="B". unanswered: "First?". You can now continue with the user\'s answers in mind.',
+		);
+		expect(r.details.unanswered).toEqual([0]);
+	});
+
+	it("a fully answered result stays byte-identical and carries no unanswered key", () => {
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [
+				{ questionIndex: 0, question: "First?", kind: "option", answer: "A" },
+				{ questionIndex: 1, question: "Second?", kind: "option", answer: "B" },
+			],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0].text).toBe(
+			'User has answered your questions: "First?"="A". "Second?"="B". You can now continue with the user\'s answers in mind.',
+		);
+		expect(r.details).toBe(result);
 	});
 });
 
@@ -512,7 +548,7 @@ describe("buildQuestionnaireResponse — multi-question mixed types", () => {
 		expect(text).toContain('"Q3?"="Y"');
 	});
 
-	it("skips unanswered questions (omits their segment from envelope)", () => {
+	it("names skipped questions in an 'unanswered:' segment (#291)", () => {
 		const params: QuestionParams = {
 			questions: [
 				{
@@ -539,9 +575,9 @@ describe("buildQuestionnaireResponse — multi-question mixed types", () => {
 		};
 		const r = buildQuestionnaireResponse(result, params);
 		expect(r.content[0].text).toBe(
-			'User has answered your questions: "Q2?"="B". You can now continue with the user\'s answers in mind.',
+			'User has answered your questions: "Q2?"="B". unanswered: "Q1?". You can now continue with the user\'s answers in mind.',
 		);
-		expect(r.content[0].text).not.toContain("Q1?");
+		expect(r.details.unanswered).toEqual([0]);
 	});
 
 	it("preserves notes in details AND echoes them across multiple questions", () => {

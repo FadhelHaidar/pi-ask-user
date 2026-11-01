@@ -4,6 +4,22 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
+// `bun run` provides this global; the repo has no `@types/bun`, so declare the one call used
+// here to keep `tsc`-based editors quiet without adding a dependency.
+declare const Bun: {
+	build(options: {
+		entrypoints: string[];
+		root: string;
+		outdir: string;
+		target: "node";
+		format: "esm";
+		splitting: boolean;
+		sourcemap: "none";
+		naming: { entry: string; chunk: string; asset: string };
+		packages: "external";
+	}): Promise<{ success: boolean; logs: unknown[] }>;
+};
+
 const root = fileURLToPath(new URL("../", import.meta.url));
 const dist = join(root, "dist");
 const args = process.argv.slice(2);

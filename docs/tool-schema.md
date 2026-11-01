@@ -100,27 +100,59 @@ question is blank.
 
 Cancelling, and any result with neither answer segments nor a global note, both collapse
 to the single string `User declined to answer questions` so the model sees one canonical
-signal. Partial submission is allowed: unanswered questions simply contribute no segment.
+signal. Partial submission is allowed: unanswered questions contribute no segment, and
+their question text is listed in an `unanswered: "<question>", …` segment after the
+answers, with the same indexes in `details.unanswered`. A global note counts as an answer
+on its own, so a note with every question blank still yields the answered envelope.
 A cancelled result always reads as the decline in text; its note, if any, survives only
 in `details.globalNote`.
 
 ## Event contract
 
-The package publishes one event on Pi's event bus, emitted after validation passes and
-before the dialog is shown. Import it from the `/events` subpath:
+The package publishes three events on Pi's event bus — one before the dialog is shown, two
+bracketing the wait — and accepts a fourth that answers the questionnaire from outside the
+terminal. Import them from the `/events` subpath:
 
 ```ts
-import { ASK_USER_PROMPT_EVENT, type AskUserPromptEventPayload } from "@juicesharp/rpiv-ask-user-question/events";
+import { ASK_USER_PROMPT_EVENT, type AskUserPromptEventPayload } from "@fadhelhaidar/pi-ask-user/events";
 
 pi.events.on(ASK_USER_PROMPT_EVENT, (payload: AskUserPromptEventPayload) => {
-  // payload.questions[].{ question, header, multiSelect, options[] }
+  // payload.toolCallId, payload.questions[].{ question, header, multiSelect, options[] }
   // payload.questions[].options[].{ label, description, hasPreview }
 });
 ```
 
 The channel name is `rpiv:ask-user:prompt`. Preview *content* is deliberately not shipped
 in the payload — only `hasPreview: boolean` — so listeners forwarding the event across a
-process or network boundary stay cheap.
+process or network boundary stay cheap. The prompt event fires after validation passes and
+before the dialog is shown; `rpiv:ask-user:blocked` then brackets the wait with
+`{ active: true, toolCallId }` and `{ active: false, toolCallId }`, including when the
+dialog never mounts because an answer arrived first.
+
+## Answering from outside the terminal
+
+A supervisor, bridge or test harness emits `rpiv:ask-user:answer` on the same bus:
+
+```ts
+pi.events.emit(ASK_USER_ANSWER_EVENT, {
+  toolCallId,
+  answers: [{ questionIndex: 0, optionIndexes: [1], notes: "keep the bus factor up" }],
+  globalNote: "ship on Tuesday",
+});
+```
+
+`answers` carries one entry per question — `optionIndexes` for chosen options (authored
+order is preserved, not the order given here), `text` for a typed custom answer, `notes`
+for that question's note; multi-select accepts both `optionIndexes` and `text` together,
+single-select takes one index or `text`. Send `{ cancel: true }` instead to decline as `Esc`
+does. Every attempt gets exactly one `rpiv:ask-user:answer-result` verdict:
+`{ ok: true }`, or `{ ok: false, code, reason }` with `code` one of `not_found`,
+`invalid_payload`, `invalid_answer` or `unsupported_host`. Validation is strict and
+all-or-nothing — a blank, duplicated or out-of-range answer applies nothing and leaves the
+dialog open — and the first answer wins, whether it came from the keyboard or this event.
+Questionnaires are addressed by the `toolCallId` on the prompt event, so parallel calls
+are independent. Events answer terminal dialogs only; RPC hosts answer through their own
+dialogs and reject with `unsupported_host`.
 
 Stability policy for the `rpiv:*` namespace: channel names are immutable, payload changes
 are append-only and always optional, payloads stay JSON-safe, and any breaking change ships
