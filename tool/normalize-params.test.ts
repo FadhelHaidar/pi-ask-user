@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeLineTerminators, normalizeQuestionParams } from "./normalize-params.js";
+import { normalizeLineTerminators, normalizeQuestionParams, prepareQuestionArguments } from "./normalize-params.js";
 import type { QuestionParams } from "./types.js";
 
 describe("normalizeLineTerminators", () => {
@@ -73,5 +73,36 @@ describe("normalizeQuestionParams", () => {
 			questions: [{ question: "Q?", options: [{ label: "A" }, { label: "B" }] }],
 		} as unknown as QuestionParams;
 		expect(normalizeQuestionParams(malformed)).toEqual(malformed);
+	});
+});
+
+describe("prepareQuestionArguments", () => {
+	const questions = [{ question: "Q?", options: [{ label: "A", description: "a" }] }];
+
+	it("passes well-formed arguments through unchanged", () => {
+		const args = { questions };
+		expect(prepareQuestionArguments(args)).toEqual(args);
+	});
+
+	it("decodes a JSON string holding the questions array (#244)", () => {
+		const out = prepareQuestionArguments({ questions: JSON.stringify(questions) }) as QuestionParams;
+		expect(out.questions).toEqual(questions);
+	});
+
+	it("decodes JSON-string elements and their options one level down", () => {
+		const out = prepareQuestionArguments({
+			questions: [JSON.stringify({ question: "Q?", options: JSON.stringify([{ label: "A", description: "a" }]) })],
+		}) as QuestionParams;
+		expect(out.questions).toEqual(questions);
+	});
+
+	it("leaves undecodable values untouched so validation reports the real problem", () => {
+		expect(prepareQuestionArguments({ questions: "not json" })).toEqual({ questions: "not json" });
+		expect(prepareQuestionArguments({ questions: "[{\"question\":1}]", other: 1 })).toEqual({
+			questions: [{ question: 1 }],
+			other: 1,
+		});
+		expect(prepareQuestionArguments(null)).toBe(null);
+		expect(prepareQuestionArguments("string")).toBe("string");
 	});
 });

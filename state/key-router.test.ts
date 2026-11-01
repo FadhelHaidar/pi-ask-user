@@ -79,6 +79,7 @@ function makeRuntime(over: Partial<QuestionnaireRuntime> = {}): QuestionnaireRun
 		currentItem: items[0],
 		items,
 		collapseKey: "ctrl+]",
+		notesKey: "n",
 		...over,
 	};
 }
@@ -573,6 +574,92 @@ describe("routeKey — cancel + submit", () => {
 		expect(
 			routeKey(sentinel(KEY.CONFIRM), makeState({ currentTab: 2, submitChoiceIndex: 1 }), makeRuntime()),
 		).toEqual({ kind: "cancel" });
+	});
+});
+
+describe("routeKey — digit hotkeys", () => {
+	const multiQ = makeQuestion({
+		multiSelect: true,
+		options: [
+			{ label: "FE", description: "FE" },
+			{ label: "BE", description: "BE" },
+		],
+	});
+	const singleItems: WrappingSelectItem[] = [
+		{ kind: "option", label: "A" },
+		{ kind: "option", label: "B" },
+		{ kind: "other", label: "Type something." },
+	];
+	const multiItems: WrappingSelectItem[] = [...singleItems, { kind: "next", label: "Next" }];
+
+	it("a digit answers a single-select question with that row, like Enter on it", () => {
+		expect(
+			routeKey("2", makeState(), makeRuntime({ isMulti: false, items: singleItems, currentItem: singleItems[0] })),
+		).toEqual({
+			kind: "confirm",
+			answer: { questionIndex: 0, question: "Pick one", kind: "option", answer: "B" },
+			autoAdvanceTab: undefined,
+		});
+	});
+
+	it("a digit toggles its row on a multi-select question without moving the cursor", () => {
+		const runtime = makeRuntime({
+			questions: [multiQ],
+			isMulti: false,
+			items: multiItems,
+			currentItem: multiItems[0],
+		});
+		expect(routeKey("2", makeState(), runtime)).toEqual({ kind: "toggle", index: 1 });
+	});
+
+	it("a digit on the custom row focuses it for typing instead of answering", () => {
+		const runtime = makeRuntime({ isMulti: false, items: singleItems, currentItem: singleItems[0] });
+		expect(routeKey("3", makeState(), runtime)).toEqual({ kind: "nav", nextIndex: 2, inputValue: "" });
+	});
+
+	it("the unnumbered Next row has no digit", () => {
+		const runtime = makeRuntime({
+			questions: [multiQ],
+			isMulti: false,
+			items: multiItems,
+			currentItem: multiItems[0],
+		});
+		expect(routeKey("4", makeState(), runtime)).toEqual({ kind: "ignore" });
+	});
+
+	it("a digit past the last row is ignored", () => {
+		const runtime = makeRuntime({ isMulti: false, items: singleItems, currentItem: singleItems[0] });
+		expect(routeKey("9", makeState(), runtime)).toEqual({ kind: "ignore" });
+	});
+
+	it("digits stay literal text while an editor has the keyboard", () => {
+		const runtime = makeRuntime({ isMulti: false, items: singleItems, currentItem: singleItems[2] });
+		expect(routeKey("1", makeState({ inputMode: true }), runtime)).toEqual({ kind: "ignore" });
+		expect(routeKey("1", makeState({ notesVisible: true }), runtime)).toEqual({
+			kind: "notes_forward",
+			data: "1",
+		});
+	});
+});
+
+describe("routeKey — configurable notesKey", () => {
+	it("a configured single character opens the notes editor and the default one no longer does", () => {
+		expect(routeKey("m", makeState(), makeRuntime({ notesKey: "m" }))).toEqual({ kind: "notes_enter" });
+		expect(routeKey("n", makeState(), makeRuntime({ notesKey: "m" }))).toEqual({ kind: "ignore" });
+	});
+
+	it("a configured key spec matches, including its CSI-u encoding", () => {
+		const runtime = makeRuntime({ notesKey: "ctrl+n" });
+		expect(routeKey("\x1b[110;5u", makeState(), runtime)).toEqual({ kind: "notes_enter" });
+		expect(routeKey("n", makeState(), runtime)).toEqual({ kind: "ignore" });
+	});
+
+	it("a CSI-u encoded default key opens the notes editor (#312)", () => {
+		expect(routeKey("\x1b[110u", makeState(), makeRuntime())).toEqual({ kind: "notes_enter" });
+	});
+
+	it("a non-Latin single character works as the notes key", () => {
+		expect(routeKey("т", makeState(), makeRuntime({ notesKey: "т" }))).toEqual({ kind: "notes_enter" });
 	});
 });
 

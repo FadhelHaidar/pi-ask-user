@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { QuestionAnswer, QuestionData } from "../tool/types.js";
 import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
-import { selectActivePreviewPaneIndex, selectConfirmedIndicator } from "./selectors/derivations.js";
+import { selectActivePreviewPaneIndex, selectConfirmedIndicator, selectSavedNote } from "./selectors/derivations.js";
 import { selectActiveView } from "./selectors/focus.js";
 
 function q(over: Partial<QuestionData> = {}): QuestionData {
@@ -106,5 +106,26 @@ describe("selectConfirmedIndicator — kind matrix", () => {
 			[0, { questionIndex: 0, question: "q", kind: "custom", answer: "Hello" }],
 		]);
 		expect(selectConfirmedIndicator(questions, 0, answers, items)).toEqual({ index: 1, labelOverride: "Hello" });
+	});
+});
+
+describe("selectSavedNote (#197)", () => {
+	const withNote = (notes?: string) =>
+		new Map<number, QuestionAnswer>([[0, { questionIndex: 0, question: "q", kind: "option", answer: "A", notes }]]);
+
+	it("returns the side-band note — it exists before the question is answered", () => {
+		expect(selectSavedNote(new Map([[0, "typed first"]]), new Map(), 0)).toBe("typed first");
+	});
+
+	it("uses the answer's mirrored note when the side-band has no entry", () => {
+		expect(selectSavedNote(new Map(), withNote("from answer"), 0)).toBe("from answer");
+	});
+
+	it("prefers the side-band — a present empty string means the note was cleared", () => {
+		expect(selectSavedNote(new Map([[0, ""]]), withNote("stale mirror"), 0)).toBeUndefined();
+	});
+
+	it("returns undefined for a tab with no note", () => {
+		expect(selectSavedNote(new Map(), new Map(), 1)).toBeUndefined();
 	});
 });

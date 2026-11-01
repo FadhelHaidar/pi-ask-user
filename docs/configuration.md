@@ -59,6 +59,7 @@ type are likewise dropped back to their default without a warning.
 | Setting | What it does | Default |
 | --- | --- | --- |
 | `collapseKey` | Key that collapses and expands the dialog overlay. | `"ctrl+]"` |
+| `notesKey` | Key that opens the notes editor. | `"n"` |
 | `guidance.description` | Full text of the tool description the model sees. Replaces the built-in default entirely — no merging. | built-in description |
 | `guidance.promptSnippet` | One-line snippet describing the tool in the system prompt. | built-in snippet |
 | `guidance.promptGuidelines` | List of usage guidelines given to the model. | 4 built-in guidelines |
@@ -89,6 +90,19 @@ The footer hint inside the dialog names whatever key you configure (`Alt+O to co
 for `"alt+o"`), as do the collapsed one-line footer and the one-shot notification shown
 when the dialog is first hidden. With `"off"` the collapse hint is dropped from the
 footer entirely, since no shortcut can fire.
+
+### `notesKey`
+
+The default `n` never fires on a non-Latin layout — for example a Cyrillic keyboard types
+`т` on that key, and Pi's key parser only recognises Latin keys. Set `notesKey` to the
+character your keyboard actually types (`"т"`), or to a key spec such as `"ctrl+n"`.
+
+A single character matches as typed, in any script. A longer value must be a valid key
+spec (the grammar above). Values the dialog already uses — space, Enter, Tab, Esc, the
+arrows — are rejected, as are invalid specs; both fall back to `n`. The notes key wins over
+the row shortcuts, so binding a digit to notes opens the editor instead of acting on that
+row — the `1`–`9` shortcuts keep their meaning only while `notesKey` is not a digit. The
+notes hints in every locale name the configured key (`т to add a note`).
 
 ### `guidance.description`, `guidance.promptSnippet` and `guidance.promptGuidelines`
 

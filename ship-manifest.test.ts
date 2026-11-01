@@ -71,6 +71,7 @@ describe("prebuilt package", () => {
 			entry.default({
 				registerTool(tool) { tools.set(tool.name, tool); },
 				on(event, handler) { handlers.set(event, handler); },
+				events: { on() {}, emit() {} },
 			});
 			assert.equal(typeof tools.get("ask_user_question")?.execute, "function");
 			assert.equal(typeof handlers.get("before_agent_start"), "function");

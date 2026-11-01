@@ -46,6 +46,8 @@ export {
  */
 export interface PreviewPaneProps {
 	notesVisible: boolean;
+	/** A committed note exists for this tab — the affordance offers "edit" instead of "add" (#197). */
+	hasNote: boolean;
 	selectedIndex: number;
 	focused: boolean;
 	/**
@@ -96,7 +98,7 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 		this.getTerminalWidth = config.getTerminalWidth;
 		this.optionListView = config.optionListView;
 		this.previewBlock = config.previewBlock;
-		this.props = { notesVisible: false, selectedIndex: 0, focused: false, inputMode: false };
+		this.props = { notesVisible: false, hasNote: false, selectedIndex: 0, focused: false, inputMode: false };
 	}
 
 	setGlobalLeftWidth(getter: (paneWidth: number) => number): void {
@@ -141,6 +143,7 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 				mode,
 				this.props.focused,
 				this.props.notesVisible,
+				this.props.hasNote,
 			),
 		];
 	}
@@ -219,6 +222,7 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 			mode,
 			this.props.focused,
 			this.props.notesVisible,
+			this.props.hasNote,
 		);
 		const boxWidth = Math.max(1, visibleWidth(contentLines[0] ?? ""));
 		const boxAlignedPad = Math.max(PREVIEW_PADDING_LEFT, colWidth - boxWidth);

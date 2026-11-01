@@ -54,3 +54,55 @@ export function normalizeQuestionParams(params: QuestionParams): QuestionParams 
 		})),
 	};
 }
+
+/**
+ * Pi's `prepareArguments` hook: undo double-encoded tool arguments before schema
+ * validation (#244). Some tool-call parsers (vLLM/LiteLLM-served GLM/Qwen-class
+ * models) intermittently emit nested structures as JSON strings — `questions` itself,
+ * or its elements (`questions.0: must be object`). Only a string at an array/object
+ * position is decoded, and only when it parses to the expected shape; anything else is
+ * passed through untouched so validation still reports the real problem. The same
+ * applies one level down to `options`. Well-formed arguments are returned as-is.
+ */
+export function prepareQuestionArguments(args: unknown): QuestionParams {
+	if (!isJsonRecord(args)) return args as QuestionParams;
+	const questions = decodeArray(args.questions);
+	if (!questions) return args as QuestionParams;
+	const decoded = questions.map((q) => {
+		const question = decodeObject(q);
+		if (!question) return q;
+		const options = decodeArray(question.options);
+		return options ? { ...question, options: options.map((o) => decodeObject(o) ?? o) } : question;
+	});
+	// SAFETY: the spread carries the caller's own fields plus the just-decoded JSON
+	// structures; `validateQuestionnaire` rejects anything that is not a real
+	// questionnaire, so this cast only bridges parsed JSON and the declared type.
+	return { ...args, questions: decoded } as unknown as QuestionParams;
+}
+
+/** A decoded JSON value: what a tool-argument string may legitimately hold. */
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+function isJsonRecord(value: unknown): value is Record<string, JsonValue> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** A JSON string holding an array → that array; anything else → `undefined`. */
+function decodeArray(value: unknown): JsonValue[] | undefined {
+	const parsed = typeof value === "string" ? parseJson(value) : value;
+	return Array.isArray(parsed) ? parsed : undefined;
+}
+
+/** A JSON string holding an object → that object; anything else → `undefined`. */
+function decodeObject(value: unknown): Record<string, JsonValue> | undefined {
+	const parsed = typeof value === "string" ? parseJson(value) : value;
+	return isJsonRecord(parsed) ? parsed : undefined;
+}
+
+function parseJson(text: string): JsonValue | undefined {
+	try {
+		return JSON.parse(text);
+	} catch {
+		return undefined;
+	}
+}

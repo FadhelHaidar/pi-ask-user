@@ -7,7 +7,7 @@ render at all.
 
 | Environment | What the model sees | What you see |
 | --- | --- | --- |
-| Interactive terminal | `ask_user_question` in its tool list | The full tabbed TUI overlay |
+| Interactive terminal | `ask_user_question` in its tool list | The full tabbed TUI dialog, inline in Pi's editor area (or as an overlay — see below) |
 | RPC / ACP host (VS Code pendant, Zed, Paseo) | `ask_user_question` in its tool list | A sequence of the host's own native select and input dialogs |
 | Non-interactive run (no UI) | Nothing — the tool is removed | Nothing |
 
@@ -47,14 +47,57 @@ TUI produces. Trade-offs inherent to the native primitives:
   Submit tab — are terminal-only; the host's native `select` and `input` primitives carry
   no note field.
 - Multi-select is a free-text input: type the option numbers, comma-separated
-  (`1,3`). Any token that is not a valid option index is treated as a typed custom answer,
-  which is how the `Type something.` escape survives. An empty input commits an empty
-  selection, matching `Next` with nothing toggled.
+  (`1,3`), optionally followed by `; your own answer` to submit checks and custom text
+  together. A reply that is no option number is taken as the typed custom answer; an empty
+  input commits an empty selection, matching `Next` with nothing toggled. A blank custom
+  answer stays blank (this fork keeps that behavior; upstream returns to the picker).
 - Dismissing any dialog cancels the whole questionnaire, mirroring `Esc` in the TUI.
 
 If the host can render neither custom UI nor dialogs, the call returns
 `error: "no_custom_ui"` with text telling the model the user never saw the questions and
 that it should ask them as plain chat text instead — explicitly not a decline.
+
+## Where the dialog renders
+
+In a terminal the questionnaire mounts inline in Pi's editor slot by default, capped at
+70% of the terminal height (at least 12 rows), so `PageUp`/`PageDown` and the mouse wheel
+keep scrolling the transcript while a question is open. It falls back to an overlay in two
+cases, both of which mean the inline slot cannot receive keys:
+
+- Another questionnaire already holds the slot.
+- An overlay that captures input (for example `/btw`) is on screen. A question is stacked
+  on top of it as an overlay instead, and collapses to its one-line row rather than
+  hiding, because Pi pops overlays from the top of its stack.
+
+`ctx.ui.custom` options that already allocate the dialog's rows (marked with the host
+symbol `rpiv-ask-user-question:host-allocated-rows`) are exempt from the 70% cap, so a
+host that sizes the slot itself is never shrunk twice.
+
+Because Pi closes an overlay by popping the top of its stack, an answer that arrives from
+outside (`rpiv:ask-user:answer`) removes a stacked questionnaire through its own overlay
+handle rather than the host's close callback. Answering the upper one is unaffected; the
+lower one leaves the stack without disturbing it.
+
+## Answering from outside the terminal
+
+A program driving Pi — a pane supervisor, a phone or web bridge, a test harness — can
+answer an open questionnaire without synthesizing keystrokes:
+
+| Event | Direction | Purpose |
+| --- | --- | --- |
+| `rpiv:ask-user:prompt` | out | Questions, plus the `toolCallId` naming this questionnaire |
+| `rpiv:ask-user:blocked` | out | `{ active: true }` while input is awaited, `{ active: false }` when it ends, both carrying `toolCallId` |
+| `rpiv:ask-user:answer` | **in** | Answer or cancel the questionnaire named by `toolCallId` |
+| `rpiv:ask-user:answer-result` | out | One verdict per attempt: `{ ok }`, or `{ ok: false, code, reason }` with `code` one of `not_found`, `invalid_payload`, `invalid_answer`, `unsupported_host` |
+
+`rpiv:ask-user:answer` takes `answers` — one `{ questionIndex, optionIndexes?, text?, notes? }`
+entry per question, where single-select takes one index or `text` and multi-select takes
+either or both — plus an optional `globalNote`, or `{ cancel: true }` to decline as `Esc`
+does. Validation is strict and all-or-nothing: a missing, duplicated, out-of-range or
+blank answer applies nothing and leaves the dialog open, since a partly applied answer
+would reach the model indistinguishable from one the user gave. The first answer wins,
+whether it came from the keyboard or from this event, and the events are terminal-only:
+RPC hosts answer through their own dialogs and return `unsupported_host`.
 
 ## Conditional surfaces
 
@@ -68,6 +111,7 @@ Some parts of the dialog exist only under the right conditions:
 | Side-by-side preview | An option carries a `preview`, and terminal and pane are both ≥ 100 columns |
 | Preview pane at all | Single-select questions only |
 | Collapse shortcut | `collapseKey` is not `"off"` |
+| Overlay instead of inline | Another questionnaire holds the editor slot, or an overlay that captures keys is on screen |
 | Full overlay hide on collapse | The host also exposes raw terminal input (the only path that can reopen a hidden overlay); without it, collapsing shrinks the dialog to a visible one-line row instead |
 | Localized chrome | `@juicesharp/rpiv-i18n` is installed |
 

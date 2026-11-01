@@ -1,22 +1,113 @@
 import {
   DEFAULT_COLLAPSE_KEY,
   COLLAPSE_KEY_OFF,
+  DEFAULT_NOTES_KEY,
+  KEY_PLACEHOLDER,
+  formatNotesKeyForDisplay,
   formatKeySpecForDisplay,
   ROW_INTENT_META,
   t,
   displayLabel,
-  formatAnswerScalar
-} from "./index-x7fb685n.js";
+  formatAnswerScalar,
+  BORDER_VERTICAL_OVERHEAD,
+  BORDER_HORIZONTAL_OVERHEAD,
+  BORDER_INNER_PADDING_HORIZONTAL,
+  stripFenceMarkers,
+  renderBorderedBox,
+  computeBoxDimensions
+} from "./index-n7wxhdmh.js";
 
 // view/dialog-builder.ts
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import { Container as Container2, Spacer as Spacer2 } from "@earendil-works/pi-tui";
+import { Container as Container2, CURSOR_MARKER, Spacer as Spacer2 } from "@earendil-works/pi-tui";
+
+// view/scroll-window.ts
+var OVERFLOW_UP = "↑";
+var OVERFLOW_DOWN = "↓";
+var OVERFLOW_BOTH = "↕";
+function computeScrollStart(bodyRange, rowsBeforeBody, availableMiddle, middleRows) {
+  if (!bodyRange)
+    return 0;
+  const focusedRowInMiddle = rowsBeforeBody + bodyRange[0];
+  const focusedHeight = bodyRange[1] - bodyRange[0];
+  const idealStart = focusedRowInMiddle - Math.floor(Math.max(0, availableMiddle - focusedHeight) / 2);
+  return Math.max(0, Math.min(idealStart, middleRows - availableMiddle));
+}
+function decorateOverflow(scrollableMiddle, hasUp, hasDown, theme, protectedRows) {
+  const drawable = (row) => !protectedRows || row < protectedRows[0] || row >= protectedRows[1];
+  if (hasUp && hasDown && scrollableMiddle.length === 1) {
+    if (drawable(0))
+      scrollableMiddle[0] = theme.fg("dim", OVERFLOW_BOTH);
+    return;
+  }
+  if (hasUp && scrollableMiddle.length > 0 && drawable(0)) {
+    scrollableMiddle[0] = theme.fg("dim", OVERFLOW_UP);
+  }
+  const last = scrollableMiddle.length - 1;
+  if (hasDown && last > 0 && drawable(last)) {
+    scrollableMiddle[last] = theme.fg("dim", OVERFLOW_DOWN);
+  }
+}
 
 // view/tab-content-strategy.ts
 import { Container, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+
+// state/selectors/derivations.ts
+function selectConfirmedIndicator(questions, currentTab, answers, items) {
+  const q = questions[currentTab];
+  if (!q || q.multiSelect === true)
+    return;
+  const prior = answers.get(currentTab);
+  if (!prior)
+    return;
+  if (prior.kind === "custom") {
+    const otherIndex = items.findIndex((it) => it.kind === "other");
+    if (otherIndex < 0)
+      return;
+    return { index: otherIndex, labelOverride: prior.answer ?? "" };
+  }
+  if (prior.kind !== "option" || typeof prior.answer !== "string")
+    return;
+  const index = items.findIndex((it) => it.kind === "option" && it.label === prior.answer);
+  if (index < 0)
+    return;
+  return { index };
+}
+function selectSavedNote(notesByTab, answers, tab) {
+  const note = notesByTab.get(tab) ?? answers.get(tab)?.notes;
+  return note && note.length > 0 ? note : undefined;
+}
+function selectActivePreviewPaneIndex(currentTab, totalQuestions) {
+  if (totalQuestions <= 0)
+    return 0;
+  return Math.min(currentTab, totalQuestions - 1);
+}
+
+// view/dialog-copy.ts
+var HINT_PART_ENTER = "Enter to select";
+var HINT_PART_NAV = "↑/↓ to navigate";
+var HINT_PART_NEW_LINE = "Shift+Enter for newline";
+var HINT_PART_CLEAR = "Ctrl+U to clear";
+var HINT_PART_TOGGLE = "Enter to toggle";
+var HINT_PART_TAB = "Tab to switch questions";
+var HINT_PART_CANCEL = "Esc to cancel";
+var HINT_PART_NOTES_TEMPLATE = `${KEY_PLACEHOLDER} to add notes`;
+var HINT_PART_NOTES = HINT_PART_NOTES_TEMPLATE.replace(KEY_PLACEHOLDER, formatNotesKeyForDisplay(DEFAULT_NOTES_KEY));
+var HINT_PART_COLLAPSE_TEMPLATE = `${KEY_PLACEHOLDER} to collapse`;
+var HINT_PART_EXPAND_TEMPLATE = `${KEY_PLACEHOLDER} to expand`;
+var HINT_PART_COLLAPSE = HINT_PART_COLLAPSE_TEMPLATE.replace(KEY_PLACEHOLDER, formatKeySpecForDisplay(DEFAULT_COLLAPSE_KEY));
+var HINT_SINGLE = [HINT_PART_ENTER, HINT_PART_NAV, HINT_PART_NOTES, HINT_PART_CANCEL].join(" · ");
+var HINT_MULTI = [HINT_PART_ENTER, HINT_PART_NAV, HINT_PART_NOTES, HINT_PART_TAB, HINT_PART_CANCEL].join(" · ");
+var COLLAPSED_HINT_TEMPLATE = [HINT_PART_EXPAND_TEMPLATE, HINT_PART_CANCEL].join(" · ");
+var REVIEW_HEADING = "Review your answers";
+var READY_PROMPT = "Ready to submit your answers?";
+var INCOMPLETE_WARNING_PREFIX = "⚠ Answer remaining questions before submitting:";
+var SAVED_NOTE_LABEL = "Note for this answer:";
+
+// view/tab-content-strategy.ts
 var NOTES_HEADER = "Notes:";
 var GLOBAL_NOTES_HEADER = "Global note:";
-var REVIEW_GLOBAL_HINT = "n to add a note";
+var REVIEW_GLOBAL_HINT_TEMPLATE = `${KEY_PLACEHOLDER} to add a note`;
 var REVIEW_NOTE_LABEL = "Note";
 
 class OneLineClippedText {
@@ -65,19 +156,26 @@ class QuestionTabStrategy {
     return this.config.getCurrentBodyHeight(width);
   }
   midRows(state) {
-    if (!state.notesVisible)
+    if (state.notesVisible) {
+      return [
+        new Text(this.config.theme.fg("muted", t("notes.header", NOTES_HEADER)), 1, 0),
+        this.config.notesInput,
+        new Spacer(1)
+      ];
+    }
+    const note = selectSavedNote(state.notesByTab, state.answers, state.currentTab);
+    if (note === undefined)
       return [];
-    return [
-      new Text(this.config.theme.fg("muted", t("notes.header", NOTES_HEADER)), 1, 0),
-      this.config.notesInput,
-      new Spacer(1)
-    ];
+    const [firstLine = "", ...rest] = note.split(`
+`);
+    const text = `${t("notes.saved_label", SAVED_NOTE_LABEL)} ${firstLine}${rest.length > 0 ? " …" : ""}`;
+    return [new OneLineClippedText(this.config.theme.fg("dim", text), 1)];
   }
   footerRows(state) {
     const question = this.config.questions[state.currentTab];
     return [
       new Spacer(1),
-      new OneLineClippedText(this.config.theme.fg("dim", buildHintText(question, this.config.isMulti, state, this.config.collapseKey)), 1)
+      new OneLineClippedText(this.config.theme.fg("dim", buildHintText(question, this.config.isMulti, state, this.config.collapseKey, this.config.notesKey)), 1)
     ];
   }
   focusedItemRowRange(width, state) {
@@ -151,18 +249,19 @@ class SubmitTabStrategy {
       out.push(new Spacer(1));
       out.push(new Spacer(1));
     }
-    out.push(new OneLineClippedText(this.config.theme.fg("dim", buildSubmitHintText(state)), 1));
+    out.push(new OneLineClippedText(this.config.theme.fg("dim", buildSubmitHintText(state, this.config.notesKey)), 1));
     return out;
   }
   focusedItemRowRange(_width, _state) {
     return;
   }
 }
-function buildHintText(question, isMulti, state, collapseKey) {
+function buildHintText(question, isMulti, state, collapseKey, notesKey) {
   const enterHint = question?.multiSelect === true && !state.notesVisible ? t("hint.enter_toggle", HINT_PART_TOGGLE) : t("hint.enter", HINT_PART_ENTER);
   const parts = [enterHint, t("hint.navigate", HINT_PART_NAV)];
-  if (question && !state.notesVisible && !state.inputMode)
-    parts.push(t("hint.notes", HINT_PART_NOTES));
+  if (question && !state.notesVisible && !state.inputMode) {
+    parts.push(t("hint.notes", HINT_PART_NOTES_TEMPLATE).replace(KEY_PLACEHOLDER, formatNotesKeyForDisplay(notesKey)));
+  }
   if (isMulti)
     parts.push(t("hint.tab", HINT_PART_TAB));
   parts.push(t("hint.cancel", HINT_PART_CANCEL));
@@ -175,10 +274,11 @@ function buildHintText(question, isMulti, state, collapseKey) {
     parts.push(t("hint.clear", HINT_PART_CLEAR));
   return parts.join(" · ");
 }
-function buildSubmitHintText(state) {
+function buildSubmitHintText(state, notesKey) {
   const parts = [t("hint.enter", HINT_PART_ENTER), t("hint.navigate", HINT_PART_NAV)];
-  if (!state.notesVisible)
-    parts.push(t("review.global_hint", REVIEW_GLOBAL_HINT));
+  if (!state.notesVisible) {
+    parts.push(t("review.global_hint", REVIEW_GLOBAL_HINT_TEMPLATE).replace(KEY_PLACEHOLDER, formatNotesKeyForDisplay(notesKey)));
+  }
   parts.push(t("hint.cancel", HINT_PART_CANCEL));
   if (state.notesVisible)
     parts.push(t("hint.newline", HINT_PART_NEW_LINE));
@@ -186,27 +286,6 @@ function buildSubmitHintText(state) {
 }
 
 // view/dialog-builder.ts
-var HINT_PART_ENTER = "Enter to select";
-var HINT_PART_NAV = "↑/↓ to navigate";
-var HINT_PART_NEW_LINE = "Shift+Enter for newline";
-var HINT_PART_CLEAR = "Ctrl+U to clear";
-var HINT_PART_TOGGLE = "Enter to toggle";
-var HINT_PART_NOTES = "n to add notes";
-var HINT_PART_TAB = "Tab to switch questions";
-var HINT_PART_CANCEL = "Esc to cancel";
-var KEY_PLACEHOLDER = "{key}";
-var HINT_PART_COLLAPSE_TEMPLATE = `${KEY_PLACEHOLDER} to collapse`;
-var HINT_PART_EXPAND_TEMPLATE = `${KEY_PLACEHOLDER} to expand`;
-var HINT_PART_COLLAPSE = HINT_PART_COLLAPSE_TEMPLATE.replace(KEY_PLACEHOLDER, formatKeySpecForDisplay(DEFAULT_COLLAPSE_KEY));
-var HINT_SINGLE = [HINT_PART_ENTER, HINT_PART_NAV, HINT_PART_NOTES, HINT_PART_CANCEL].join(" · ");
-var HINT_MULTI = [HINT_PART_ENTER, HINT_PART_NAV, HINT_PART_NOTES, HINT_PART_TAB, HINT_PART_CANCEL].join(" · ");
-var COLLAPSED_HINT_TEMPLATE = [HINT_PART_EXPAND_TEMPLATE, HINT_PART_CANCEL].join(" · ");
-var REVIEW_HEADING = "Review your answers";
-var READY_PROMPT = "Ready to submit your answers?";
-var INCOMPLETE_WARNING_PREFIX = "⚠ Answer remaining questions before submitting:";
-var OVERFLOW_UP = "↑";
-var OVERFLOW_DOWN = "↓";
-var OVERFLOW_BOTH = "↕";
 function renderFitsTerminal(natural, spacerRows) {
   return spacerRows > 0 ? [...natural, ...Array(spacerRows).fill("")] : natural;
 }
@@ -214,26 +293,7 @@ function renderChromeOnly(natural, topFixed, bottomFixed, termRows) {
   const chromeOnly = [...natural.slice(0, topFixed), ...natural.slice(natural.length - bottomFixed)];
   return chromeOnly.length > termRows ? chromeOnly.slice(0, termRows) : chromeOnly;
 }
-function computeScrollStart(bodyRange, headingCount, availableMiddle, middleRows) {
-  if (!bodyRange)
-    return 0;
-  const focusedRowInMiddle = headingCount + bodyRange[0];
-  const focusedHeight = bodyRange[1] - bodyRange[0];
-  const idealStart = focusedRowInMiddle - Math.floor(Math.max(0, availableMiddle - focusedHeight) / 2);
-  return Math.max(0, Math.min(idealStart, middleRows - availableMiddle));
-}
-function decorateOverflow(scrollableMiddle, hasUp, hasDown, theme) {
-  if (hasUp && hasDown && scrollableMiddle.length === 1) {
-    scrollableMiddle[0] = theme.fg("dim", OVERFLOW_BOTH);
-    return;
-  }
-  if (hasUp && scrollableMiddle.length > 0) {
-    scrollableMiddle[0] = theme.fg("dim", OVERFLOW_UP);
-  }
-  if (hasDown && scrollableMiddle.length > 0) {
-    scrollableMiddle[scrollableMiddle.length - 1] = theme.fg("dim", OVERFLOW_DOWN);
-  }
-}
+var MIN_SCROLL_ROWS_WITH_PINNED_HEADING = 3;
 
 class DialogView {
   liveProps;
@@ -252,13 +312,15 @@ class DialogView {
       notesInput: config.notesInput,
       isMulti: config.isMulti,
       getCurrentBodyHeight: config.getCurrentBodyHeight,
-      collapseKey: config.collapseKey
+      collapseKey: config.collapseKey,
+      notesKey: config.notesKey
     });
     this.submitStrategy = config.isMulti ? new SubmitTabStrategy({
       theme: config.theme,
       questions: config.questions,
       submitPicker: config.submitPicker,
-      notesInput: config.notesInput
+      notesInput: config.notesInput,
+      notesKey: config.notesKey
     }) : undefined;
     this.maxFooterRowCount = Math.max(this.questionStrategy.footerRowCount, this.submitStrategy?.footerRowCount ?? 0);
   }
@@ -272,31 +334,46 @@ class DialogView {
     const onSubmit = this.config.isMulti && state.currentTab === this.config.questions.length;
     const strategy = onSubmit && this.submitStrategy ? this.submitStrategy : this.questionStrategy;
     const headingRowCache = strategy.headingRows(state);
-    const headingCount = headingRowCache.length;
-    const natural = this.buildContainerFromStrategy(strategy, headingRowCache).render(width);
+    const headingHeight = headingRowCache.reduce((rows, c) => rows + c.render(width).length, 0);
+    const midRows = strategy.midRows(state);
+    const natural = this.buildContainerFromStrategy(strategy, headingRowCache, midRows).render(width);
     const topFixed = 1 + (this.config.isMulti && this.config.tabBar ? 2 : 0) + 1;
     const bottomFixed = 1 + strategy.footerRowCount;
-    const middleRows = natural.length - topFixed - bottomFixed;
-    const spacerRows = Math.max(0, this.config.getBodyHeight(width) + this.maxFooterRowCount - strategy.bodyHeight(width, state) - strategy.footerRowCount);
+    const spacerRows = Math.max(0, this.config.getBodyHeight(width) + this.maxFooterRowCount - strategy.bodyHeight(width, state) - strategy.footerRowCount - (state.notesVisible ? 0 : midRows.length));
     const termRows = this.config.getTerminalRows();
-    if (natural.length + spacerRows <= termRows) {
-      return renderFitsTerminal(natural, spacerRows);
+    if (natural.length <= termRows) {
+      return renderFitsTerminal(natural, Math.min(spacerRows, termRows - natural.length));
     }
-    const availableMiddle = Math.max(0, termRows - topFixed - bottomFixed);
+    const pinHeading = termRows - topFixed - headingHeight - bottomFixed >= MIN_SCROLL_ROWS_WITH_PINNED_HEADING;
+    const top = pinHeading ? topFixed + headingHeight : topFixed;
+    const rowsBeforeBody = pinHeading ? 0 : headingHeight;
+    const middleRows = natural.length - top - bottomFixed;
+    const availableMiddle = Math.max(0, termRows - top - bottomFixed);
     if (availableMiddle === 0) {
-      return renderChromeOnly(natural, topFixed, bottomFixed, termRows);
+      return renderChromeOnly(natural, top, bottomFixed, termRows);
     }
-    const scrollStart = computeScrollStart(strategy.focusedItemRowRange(width, state), headingCount, availableMiddle, middleRows);
-    const scrollableMiddle = natural.slice(topFixed + scrollStart, topFixed + scrollStart + availableMiddle);
-    decorateOverflow(scrollableMiddle, scrollStart > 0, scrollStart + availableMiddle < middleRows, this.config.theme);
-    const result = [
-      ...natural.slice(0, topFixed),
-      ...scrollableMiddle,
-      ...natural.slice(natural.length - bottomFixed)
+    const windowRows = Math.min(availableMiddle, middleRows);
+    const optionFocus = strategy.focusedItemRowRange(width, state);
+    const notesRows = midRows.reduce((rows, component) => rows + component.render(width).length, 0);
+    const notesStart = Math.max(0, middleRows - notesRows);
+    let focusInMiddle;
+    if (state.notesVisible && notesRows > 0) {
+      const cursorRow = notesRows <= windowRows ? -1 : natural.slice(top, top + middleRows).findIndex((line, i) => i >= notesStart && line.includes(CURSOR_MARKER));
+      focusInMiddle = cursorRow === -1 ? [notesStart, middleRows] : [cursorRow, cursorRow + 1];
+    } else if (optionFocus) {
+      focusInMiddle = [rowsBeforeBody + optionFocus[0], rowsBeforeBody + optionFocus[1]];
+    }
+    const scrollStart = computeScrollStart(focusInMiddle, 0, windowRows, middleRows);
+    const scrollableMiddle = natural.slice(top + scrollStart, top + scrollStart + windowRows);
+    const focusInWindow = focusInMiddle && [
+      focusInMiddle[0] - scrollStart,
+      focusInMiddle[1] - scrollStart
     ];
+    decorateOverflow(scrollableMiddle, scrollStart > 0, scrollStart + windowRows < middleRows, this.config.theme, focusInWindow);
+    const result = [...natural.slice(0, top), ...scrollableMiddle, ...natural.slice(natural.length - bottomFixed)];
     return result.length > termRows ? result.slice(0, termRows) : result;
   }
-  buildContainerFromStrategy(strategy, headingRowCache) {
+  buildContainerFromStrategy(strategy, headingRowCache, midRows) {
     const { theme, isMulti, tabBar } = this.config;
     const state = this.liveProps.state;
     const container = new Container2;
@@ -309,7 +386,7 @@ class DialogView {
       container.addChild(c);
     container.addChild(strategy.bodyComponent(state));
     container.addChild(new Spacer2(1));
-    for (const c of strategy.midRows(state))
+    for (const c of midRows)
       container.addChild(c);
     container.addChild(border());
     for (const c of strategy.footerRows(state))
@@ -343,7 +420,7 @@ function perTabBinding(spec) {
 import { truncateToWidth as truncateToWidth2, visibleWidth, wrapTextWithAnsi as wrapTextWithAnsi2 } from "@earendil-works/pi-tui";
 
 // view/components/inline-input.ts
-import { CURSOR_MARKER, renderFakeCursor, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER as CURSOR_MARKER2, renderFakeCursor, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 var graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 function resolveCursorOffset(buffer, requested) {
   if (requested !== undefined && requested >= 0 && requested <= buffer.length)
@@ -358,7 +435,7 @@ function buildCursorRaw(buffer, offset) {
 `;
   const atCursor = rawAt === "" || rawAt === " " || cursorAtLineEnd ? " " : rawAt;
   const after = buffer.slice(offset + (cursorAtLineEnd ? 0 : rawAt.length));
-  return `${before}${CURSOR_MARKER}${renderFakeCursor(atCursor)}${after}`;
+  return `${before}${CURSOR_MARKER2}${renderFakeCursor(atCursor)}${after}`;
 }
 function renderInlineInputRow(opts) {
   const { buffer, cursorOffset, rowPrefix, continuationPrefix, contentWidth, selectedText } = opts;
@@ -676,57 +753,7 @@ class OptionListView {
 }
 
 // view/components/preview/markdown-content-cache.ts
-import { Markdown, visibleWidth as visibleWidth4 } from "@earendil-works/pi-tui";
-
-// view/components/preview/preview-box-renderer.ts
-import { truncateToWidth as truncateToWidth3, visibleWidth as visibleWidth3 } from "@earendil-works/pi-tui";
-var ANSI_SGR_RE = /\x1b\[[0-9;]*m/g;
-var ANSI_OSC8_RE = /\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
-var FENCE_MARKER_RE = /^`{3}/;
-var BORDER_VERTICAL_OVERHEAD = 2;
-var BORDER_HORIZONTAL_OVERHEAD = 2;
-var BORDER_INNER_PADDING_HORIZONTAL = 1;
-var BOX_MIN_CONTENT_WIDTH = 40;
-function stripFenceMarkers(lines) {
-  return lines.filter((line) => {
-    const clean = line.replace(ANSI_SGR_RE, "").replace(ANSI_OSC8_RE, "");
-    return !FENCE_MARKER_RE.test(clean);
-  });
-}
-function renderBorderedBox(lines, width, colorFn, hidden = 0) {
-  const dashSpan = Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD);
-  const contentInner = Math.max(1, dashSpan - 2 * BORDER_INNER_PADDING_HORIZONTAL);
-  const pad = " ".repeat(BORDER_INNER_PADDING_HORIZONTAL);
-  const top = colorFn(`┌${"─".repeat(dashSpan)}┐`);
-  const out = [top];
-  for (const line of lines) {
-    const padded = truncateToWidth3(line, contentInner, "", true);
-    out.push(`${colorFn("│")}${pad}${padded}${pad}${colorFn("│")}`);
-  }
-  if (hidden > 0) {
-    const indicator = ` ✂ ── ${hidden} lines hidden ── `;
-    const space = dashSpan - indicator.length;
-    const leftFill = "─".repeat(Math.max(0, Math.floor(space / 2)));
-    const rightFill = "─".repeat(Math.max(0, dashSpan - leftFill.length - indicator.length));
-    out.push(colorFn(`└${leftFill}${indicator}${rightFill}┘`));
-  } else {
-    out.push(colorFn(`└${"─".repeat(dashSpan)}┘`));
-  }
-  return out;
-}
-function computeBoxDimensions(contentLines, maxInnerWidth) {
-  let widest = Math.min(BOX_MIN_CONTENT_WIDTH, maxInnerWidth);
-  for (const line of contentLines) {
-    const w = visibleWidth3(line.replace(/\s+$/, ""));
-    if (w > widest)
-      widest = w;
-  }
-  const innerWidth = Math.min(widest, maxInnerWidth);
-  const boxWidth = innerWidth + BORDER_HORIZONTAL_OVERHEAD + 2 * BORDER_INNER_PADDING_HORIZONTAL;
-  return { innerWidth, boxWidth };
-}
-
-// view/components/preview/markdown-content-cache.ts
+import { Markdown, visibleWidth as visibleWidth3 } from "@earendil-works/pi-tui";
 var MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE = 20;
 var MAX_PREVIEW_HEIGHT_STACKED = 15;
 var NO_PREVIEW_TEXT = "No preview available";
@@ -764,7 +791,7 @@ class MarkdownContentCache {
     const text = this.previewTexts.get(optionIndex);
     if (!text) {
       const placeholder = this.theme.fg("dim", t("preview.no_preview", NO_PREVIEW_TEXT));
-      const pad = Math.max(0, innerWidth - visibleWidth4(placeholder));
+      const pad = Math.max(0, innerWidth - visibleWidth3(placeholder));
       return [placeholder + " ".repeat(pad)];
     }
     let md = this.markdownCache.get(optionIndex);
@@ -782,7 +809,8 @@ class MarkdownContentCache {
 }
 
 // view/components/preview/preview-block-renderer.ts
-var NOTES_AFFORDANCE_TEXT = "Notes: press n to add notes";
+var NOTES_AFFORDANCE_TEXT = `Notes: press ${formatNotesKeyForDisplay(DEFAULT_NOTES_KEY)} to add notes`;
+var NOTES_EDIT_AFFORDANCE_TEXT = `Note saved: press ${formatNotesKeyForDisplay(DEFAULT_NOTES_KEY)} to edit`;
 function contentBudgetFor(mode) {
   const cap = mode === "side-by-side" ? MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE : MAX_PREVIEW_HEIGHT_STACKED;
   return Math.max(1, cap - BORDER_VERTICAL_OVERHEAD - NOTES_AFFORDANCE_OVERHEAD);
@@ -794,8 +822,10 @@ function innerWidthFor(width) {
 class PreviewBlockRenderer {
   theme;
   cache;
+  notesKey;
   constructor(config) {
     this.theme = config.theme;
+    this.notesKey = config.notesKey;
     this.cache = new MarkdownContentCache(config.question, config.theme, config.markdownTheme);
   }
   hasAnyPreview() {
@@ -814,7 +844,7 @@ class PreviewBlockRenderer {
     const contentRows = Math.min(rawRows, contentBudget);
     return BORDER_VERTICAL_OVERHEAD + contentRows + NOTES_AFFORDANCE_OVERHEAD;
   }
-  renderBlock(width, optionIndex, mode, focused, notesVisible) {
+  renderBlock(width, optionIndex, mode, focused, notesVisible, hasNote = false) {
     const contentBudget = contentBudgetFor(mode);
     const maxInnerWidth = innerWidthFor(width);
     const raw = this.cache.bodyFor(optionIndex, maxInnerWidth);
@@ -825,13 +855,14 @@ class PreviewBlockRenderer {
     const colorFn = (s) => this.theme.fg("accent", s);
     const boxedLines = renderBorderedBox(contentLines, boxWidth, colorFn, hidden);
     const showAffordance = focused && !notesVisible && this.cache.has(optionIndex);
-    const affordance = showAffordance ? this.theme.fg("muted", t("preview.notes_affordance", NOTES_AFFORDANCE_TEXT)) : "";
+    const [affordanceKey, affordanceFallback] = hasNote ? ["preview.notes_edit_affordance", NOTES_EDIT_AFFORDANCE_TEXT] : ["preview.notes_affordance", NOTES_AFFORDANCE_TEXT];
+    const affordance = showAffordance ? this.theme.fg("muted", t(affordanceKey, affordanceFallback).replace(KEY_PLACEHOLDER, formatNotesKeyForDisplay(this.notesKey))) : "";
     return [...boxedLines, "", affordance];
   }
 }
 
 // view/components/preview/preview-layout-decider.ts
-import { visibleWidth as visibleWidth5 } from "@earendil-works/pi-tui";
+import { visibleWidth as visibleWidth4 } from "@earendil-works/pi-tui";
 var PREVIEW_MIN_WIDTH = 100;
 var PREVIEW_COLUMN_GAP = 2;
 var PREVIEW_PADDING_LEFT = 1;
@@ -848,7 +879,7 @@ function adaptiveLeftWidth(items, totalForNumbering, paneWidth) {
   const confirmedOverhead = CONFIRMED_OVERHEAD;
   let maxLabel = 0;
   for (const item of items) {
-    const w = visibleWidth5(item.label);
+    const w = visibleWidth4(item.label);
     if (w > maxLabel)
       maxLabel = w;
   }
@@ -876,7 +907,7 @@ function previewSourceWidth(question) {
       continue;
     for (const line of text.split(`
 `)) {
-      const w = visibleWidth5(line);
+      const w = visibleWidth4(line);
       if (w > max)
         max = w;
     }
@@ -917,7 +948,7 @@ function bodyWidths(paneWidth, mode, adaptiveLeft) {
 }
 
 // view/components/preview/preview-pane.ts
-import { truncateToWidth as truncateToWidth4, visibleWidth as visibleWidth6 } from "@earendil-works/pi-tui";
+import { truncateToWidth as truncateToWidth3, visibleWidth as visibleWidth5 } from "@earendil-works/pi-tui";
 class PreviewPane {
   question;
   getTerminalWidth;
@@ -932,7 +963,7 @@ class PreviewPane {
     this.getTerminalWidth = config.getTerminalWidth;
     this.optionListView = config.optionListView;
     this.previewBlock = config.previewBlock;
-    this.props = { notesVisible: false, selectedIndex: 0, focused: false, inputMode: false };
+    this.props = { notesVisible: false, hasNote: false, selectedIndex: 0, focused: false, inputMode: false };
   }
   setGlobalLeftWidth(getter) {
     this.globalLeftWidth = getter;
@@ -961,7 +992,7 @@ class PreviewPane {
     return [
       ...this.optionListView.render(width),
       ...Array(STACKED_GAP_ROWS).fill(""),
-      ...this.previewBlock.renderBlock(width, this.props.selectedIndex, mode, this.props.focused, this.props.notesVisible)
+      ...this.previewBlock.renderBlock(width, this.props.selectedIndex, mode, this.props.focused, this.props.notesVisible, this.props.hasNote)
     ];
   }
   focusedItemRowRange(width) {
@@ -1026,29 +1057,29 @@ class PreviewPane {
     for (let i = 0;i < rows; i++) {
       const leftRaw = leftLines[i] ?? "";
       const rightRaw = rightLines[i] ?? "";
-      const leftClamped = truncateToWidth4(leftRaw, leftWidth, "");
-      const leftPad = " ".repeat(Math.max(0, leftWidth - visibleWidth6(leftClamped)));
+      const leftClamped = truncateToWidth3(leftRaw, leftWidth, "");
+      const leftPad = " ".repeat(Math.max(0, leftWidth - visibleWidth5(leftClamped)));
       const joined = `${leftClamped}${leftPad}${gapStr}${rightRaw}`;
-      out.push(truncateToWidth4(joined, width, ""));
+      out.push(truncateToWidth3(joined, width, ""));
     }
     return out;
   }
   renderPaddedPreviewLines(colWidth, mode) {
     const inner = Math.max(1, colWidth - PREVIEW_PADDING_LEFT);
-    const contentLines = this.previewBlock.renderBlock(inner, this.props.selectedIndex, mode, this.props.focused, this.props.notesVisible);
-    const boxWidth = Math.max(1, visibleWidth6(contentLines[0] ?? ""));
+    const contentLines = this.previewBlock.renderBlock(inner, this.props.selectedIndex, mode, this.props.focused, this.props.notesVisible, this.props.hasNote);
+    const boxWidth = Math.max(1, visibleWidth5(contentLines[0] ?? ""));
     const boxAlignedPad = Math.max(PREVIEW_PADDING_LEFT, colWidth - boxWidth);
     return contentLines.map((line) => {
       if (line === "")
         return "";
-      const pad = Math.max(PREVIEW_PADDING_LEFT, Math.min(boxAlignedPad, colWidth - visibleWidth6(line)));
-      return `${" ".repeat(pad)}${truncateToWidth4(line, colWidth - pad, "")}`;
+      const pad = Math.max(PREVIEW_PADDING_LEFT, Math.min(boxAlignedPad, colWidth - visibleWidth5(line)));
+      return `${" ".repeat(pad)}${truncateToWidth3(line, colWidth - pad, "")}`;
     });
   }
 }
 
 // view/components/submit-picker.ts
-import { truncateToWidth as truncateToWidth5 } from "@earendil-works/pi-tui";
+import { truncateToWidth as truncateToWidth4 } from "@earendil-works/pi-tui";
 var ACTIVE_POINTER2 = "❯ ";
 var INACTIVE_POINTER2 = "  ";
 var NUMBER_SEPARATOR2 = ". ";
@@ -1078,14 +1109,14 @@ class SubmitPicker {
       const pointer = active ? ACTIVE_POINTER2 : INACTIVE_POINTER2;
       const number = `${i + 1}${NUMBER_SEPARATOR2}`;
       const label = active ? this.theme.fg("accent", this.theme.bold(text)) : this.theme.fg("text", text);
-      lines.push(truncateToWidth5(`${pointer}${number}${label}`, width, ""));
+      lines.push(truncateToWidth4(`${pointer}${number}${label}`, width, ""));
     }
     return lines;
   }
 }
 
 // view/components/tab-bar.ts
-import { truncateToWidth as truncateToWidth6 } from "@earendil-works/pi-tui";
+import { truncateToWidth as truncateToWidth5 } from "@earendil-works/pi-tui";
 
 class TabBar {
   theme;
@@ -1112,36 +1143,9 @@ class TabBar {
     const submitStyled = this.props.submit.active ? this.theme.bg("selectedBg", this.theme.fg("text", submitText)) : this.theme.fg(this.props.submit.allAnswered ? "success" : "dim", submitText);
     pieces.push(submitStyled);
     pieces.push(" →");
-    const tabLine = truncateToWidth6(pieces.join(""), width, "");
+    const tabLine = truncateToWidth5(pieces.join(""), width, "");
     return [tabLine, ""];
   }
-}
-
-// state/selectors/derivations.ts
-function selectConfirmedIndicator(questions, currentTab, answers, items) {
-  const q = questions[currentTab];
-  if (!q || q.multiSelect === true)
-    return;
-  const prior = answers.get(currentTab);
-  if (!prior)
-    return;
-  if (prior.kind === "custom") {
-    const otherIndex = items.findIndex((it) => it.kind === "other");
-    if (otherIndex < 0)
-      return;
-    return { index: otherIndex, labelOverride: prior.answer ?? "" };
-  }
-  if (prior.kind !== "option" || typeof prior.answer !== "string")
-    return;
-  const index = items.findIndex((it) => it.kind === "option" && it.label === prior.answer);
-  if (index < 0)
-    return;
-  return { index };
-}
-function selectActivePreviewPaneIndex(currentTab, totalQuestions) {
-  if (totalQuestions <= 0)
-    return 0;
-  return Math.min(currentTab, totalQuestions - 1);
 }
 
 // state/selectors/focus.ts
@@ -1290,6 +1294,7 @@ var selectSubmitPickerProps = (state, ctx) => {
 };
 var selectPreviewPaneProps = (state, ctx) => ({
   notesVisible: state.notesVisible,
+  hasNote: selectSavedNote(state.notesByTab, state.answers, ctx.i) !== undefined,
   selectedIndex: state.optionIndex,
   focused: ctx.activeView === "options",
   inputMode: state.inputMode
@@ -1352,12 +1357,13 @@ class QuestionnaireBuilder {
   initialState;
   getCurrentTab;
   collapseKey;
+  notesKey;
   selectTheme;
   markdownTheme = getMarkdownTheme();
   notesInput;
   inlineInput;
   getTerminalWidth = () => this.tui.terminal.columns;
-  getTerminalRows = () => this.tui.terminal.rows;
+  rowBudget;
   constructor(config) {
     this.tui = config.tui;
     this.theme = config.theme;
@@ -1367,6 +1373,8 @@ class QuestionnaireBuilder {
     this.initialState = config.initialState;
     this.getCurrentTab = config.getCurrentTab;
     this.collapseKey = config.collapseKey;
+    this.notesKey = config.notesKey;
+    this.rowBudget = config.rowBudget ?? ((terminalRows) => terminalRows);
     this.selectTheme = this.makeSelectTheme();
     const textEditorTheme = editorTheme(this.theme);
     this.notesInput = new Editor(this.tui, textEditorTheme);
@@ -1405,7 +1413,8 @@ class QuestionnaireBuilder {
     const previewBlock = new PreviewBlockRenderer({
       question,
       theme: this.theme,
-      markdownTheme: this.markdownTheme
+      markdownTheme: this.markdownTheme,
+      notesKey: this.notesKey
     });
     const preview = new PreviewPane({
       question,
@@ -1466,8 +1475,9 @@ class QuestionnaireBuilder {
       submitPicker,
       getBodyHeight: heights.global,
       getCurrentBodyHeight: heights.current,
-      getTerminalRows: this.getTerminalRows,
-      collapseKey: this.collapseKey
+      getTerminalRows: () => this.rowBudget(this.tui.terminal.rows),
+      collapseKey: this.collapseKey,
+      notesKey: this.notesKey
     }, { state: this.initialState, activePreviewPane: this.pickInitialActivePreview(tabs) });
   }
   buildGlobalBindings(dialog, submitPicker, tabBar) {
@@ -1531,6 +1541,10 @@ var KEYBIND_EDITOR_DOWN = "tui.editor.cursorDown";
 var KEYBIND_CLEAR = "tui.editor.deleteToLineStart";
 var KEYBIND_EXTERNAL_EDITOR = "app.editor.external";
 var NOTES_ACTIVATE_KEY = "n";
+function matchesNotesKey(data, notesKey) {
+  const key = typeof notesKey === "string" ? notesKey : NOTES_ACTIVATE_KEY;
+  return data === key || matchesKey(data, key);
+}
 function isConfirm(kb, data) {
   return kb.matches(data, KEYBIND_CONFIRM) || kb.matches(data, KEYBIND_SUBMIT);
 }
@@ -1674,10 +1688,18 @@ function routeSubmitTab(kb, data, state, runtime) {
   if (isConfirm(kb, data)) {
     return state.submitChoiceIndex === 1 ? { kind: "cancel" } : { kind: "submit" };
   }
-  if (data === NOTES_ACTIVATE_KEY) {
+  if (matchesNotesKey(data, runtime.notesKey)) {
     return { kind: "notes_enter" };
   }
   return { kind: "ignore" };
+}
+var DIGIT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+function digitRow(data, runtime) {
+  const index = DIGIT_KEYS.findIndex((digit) => matchesKey(data, digit));
+  const item = runtime.items[index];
+  if (!item || !ROW_INTENT_META[item.kind].numbered)
+    return;
+  return { index, activatesInputMode: ROW_INTENT_META[item.kind].activatesInputMode };
 }
 function routeMultiSelectTab(kb, data, state, runtime) {
   const focusedKind = runtime.currentItem?.kind;
@@ -1696,7 +1718,12 @@ function routeMultiSelectTab(kb, data, state, runtime) {
   }
   if (kb.matches(data, KEYBIND_CANCEL))
     return { kind: "cancel" };
-  return { kind: "ignore" };
+  const row = digitRow(data, runtime);
+  if (!row)
+    return { kind: "ignore" };
+  if (row.activatesInputMode)
+    return { kind: "nav", nextIndex: row.index, inputValue: runtime.inputBuffer };
+  return { kind: "toggle", index: row.index };
 }
 function routeSingleSelectTab(kb, data, state, runtime) {
   if (isConfirm(kb, data)) {
@@ -1707,7 +1734,15 @@ function routeSingleSelectTab(kb, data, state, runtime) {
   }
   if (kb.matches(data, KEYBIND_CANCEL))
     return { kind: "cancel" };
-  return { kind: "ignore" };
+  const row = digitRow(data, runtime);
+  if (!row)
+    return { kind: "ignore" };
+  if (row.activatesInputMode)
+    return { kind: "nav", nextIndex: row.index, inputValue: runtime.inputBuffer };
+  const answer = buildSingleSelectAnswer({ ...state, optionIndex: row.index }, { ...runtime, currentItem: runtime.items[row.index] });
+  if (!answer)
+    return { kind: "ignore" };
+  return { kind: "confirm", answer, autoAdvanceTab: computeAutoAdvanceTab(state, runtime) };
 }
 function routeKey(data, state, runtime) {
   const kb = runtime.keybindings;
@@ -1729,7 +1764,7 @@ function routeKey(data, state, runtime) {
   const q = runtime.questions[state.currentTab];
   if (!q)
     return { kind: "ignore" };
-  if (data === NOTES_ACTIVATE_KEY) {
+  if (matchesNotesKey(data, runtime.notesKey)) {
     return { kind: "notes_enter" };
   }
   if (kb.matches(data, KEYBIND_UP)) {
@@ -1816,12 +1851,20 @@ function withoutCustomDraft(state, tab) {
   drafts.delete(tab);
   return drafts;
 }
+function answeredRowIndex(answer, items) {
+  let index = -1;
+  if (answer?.kind === "option")
+    index = items.findIndex((i) => i.kind === "option" && i.label === answer.answer);
+  if (answer?.kind === "multi")
+    index = items.findIndex((i) => i.kind === "next");
+  return Math.max(0, index);
+}
 function switchTabResult(state, nextTab, ctx) {
   const notesValue = notesValueFor(state, nextTab);
   const transitioned = {
     ...state,
     currentTab: nextTab,
-    optionIndex: 0,
+    optionIndex: answeredRowIndex(state.answers.get(nextTab), ctx.itemsByTab[nextTab] ?? []),
     inputMode: false,
     notesVisible: false,
     submitChoiceIndex: 0,
@@ -2038,6 +2081,7 @@ class QuestionnaireSession {
   keybindings;
   editInput;
   collapseKey;
+  notesKey;
   canReopenWhileHidden;
   inputEditorOpen = false;
   overlayHandle;
@@ -2053,6 +2097,7 @@ class QuestionnaireSession {
     this.keybindings = config.keybindings;
     this.editInput = config.editInput;
     this.collapseKey = config.collapseKey;
+    this.notesKey = config.notesKey;
     this.canReopenWhileHidden = config.canReopenWhileHidden;
     const built = buildQuestionnaire({
       tui: this.tui,
@@ -2062,7 +2107,9 @@ class QuestionnaireSession {
       isMulti: this.isMulti,
       initialState: this.state,
       getCurrentTab: () => this.state.currentTab,
-      collapseKey: this.collapseKey
+      collapseKey: this.collapseKey,
+      notesKey: this.notesKey,
+      rowBudget: config.rowBudget
     });
     this.notesInput = built.notesInput;
     this.inlineInput = built.inlineInput;
@@ -2164,7 +2211,8 @@ class QuestionnaireSession {
       isMulti: this.isMulti,
       currentItem: this.currentItem(),
       items: this.itemsByTab[this.state.currentTab] ?? [],
-      collapseKey: this.collapseKey
+      collapseKey: this.collapseKey,
+      notesKey: this.notesKey
     };
   }
   applyContext() {

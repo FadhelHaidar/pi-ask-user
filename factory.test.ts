@@ -458,13 +458,15 @@ describe("ask_user_question — multi-select toggle persistence (regression)", (
 
 	// Bug: returning to a multi-select tab after toggling + tab-switching away showed empty
 	// checkboxes. After the fix, syncMultiSelectFromAnswers reads the persisted state.
+	// Re-entry restores focus to the Next row (the commit affordance of a saved multi answer).
 	it("Tab back to a multi-select tab restores the previous toggle state", async () => {
 		const tool = register();
 		const { custom } = driveCustom((c) => {
 			c.handleInput(KEY.ENTER); // toggle FE ON
 			c.handleInput(KEY.TAB); // → Q2
-			c.handleInput(KEY.SHIFT_TAB); // ← Q1 (toggles must still be lit)
-			c.handleInput(KEY.DOWN); // optionIndex 1 = BE
+			c.handleInput(KEY.SHIFT_TAB); // ← Q1 (toggles must still be lit, cursor on Next)
+			c.handleInput(KEY.DOWN); // wrap Next → FE
+			c.handleInput(KEY.DOWN); // → BE
 			c.handleInput(KEY.ENTER); // toggle BE ON (should NOT erase FE)
 			c.handleInput(KEY.DOWN); // → DB
 			c.handleInput(KEY.DOWN); // → "Type something." row
@@ -607,7 +609,7 @@ describe("ask_user_question — multi-question tab cycling flow", () => {
 	});
 
 	// Confirmed-row indicator: tab back to a previously-answered single-select tab and the
-	// prior option's row should render `<label> ✔` while the cursor (`❯`) stays at row 0.
+	// prior option's row should render `<label> ✔` with the cursor restored to that option.
 	it("Tab back to a single-select tab marks the prior option with ` ✔`", async () => {
 		const tool = register();
 		const renderedAfterBack: string[][] = [];
@@ -623,7 +625,7 @@ describe("ask_user_question — multi-question tab cycling flow", () => {
 		const lines = renderedAfterBack[0]!;
 		expect(lines.some((l) => l.includes("B ✔"))).toBe(true);
 		expect(lines.some((l) => l.includes("A ✔"))).toBe(false);
-		expect(lines.some((l) => l.includes("❯ 1. A"))).toBe(true);
+		expect(lines.some((l) => l.includes("❯ 2. B"))).toBe(true);
 	});
 
 	// Confirmed-row + custom text: prior typed text replaces "Type something." and gets ` ✔`.

@@ -1,5 +1,6 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { MarkdownTheme } from "@earendil-works/pi-tui";
+import { DEFAULT_NOTES_KEY, formatNotesKeyForDisplay, KEY_PLACEHOLDER } from "../../../config.js";
 import { t } from "../../../state/i18n-bridge.js";
 import type { QuestionData } from "../../../tool/types.js";
 import {
@@ -21,7 +22,9 @@ import type { PreviewLayoutMode } from "./preview-layout-decider.js";
  * Affordance text shown below the bordered preview when focused on a preview-bearing option.
  * Re-exported by `preview-pane.ts` for the existing test surface.
  */
-export const NOTES_AFFORDANCE_TEXT = "Notes: press n to add notes";
+export const NOTES_AFFORDANCE_TEXT = `Notes: press ${formatNotesKeyForDisplay(DEFAULT_NOTES_KEY)} to add notes`;
+/** Same affordance once a note is saved — the key now edits it (#197). */
+export const NOTES_EDIT_AFFORDANCE_TEXT = `Note saved: press ${formatNotesKeyForDisplay(DEFAULT_NOTES_KEY)} to edit`;
 
 /** Content row budget for a layout mode: preview cap minus border + affordance overhead. */
 function contentBudgetFor(mode: PreviewLayoutMode): number {
@@ -38,6 +41,8 @@ export interface PreviewBlockRendererConfig {
 	question: QuestionData;
 	theme: Theme;
 	markdownTheme: MarkdownTheme;
+	/** Resolved notes key (`resolveNotesKey` output), named by the affordance. */
+	notesKey: string;
 }
 
 /**
@@ -53,9 +58,11 @@ export interface PreviewBlockRendererConfig {
 export class PreviewBlockRenderer {
 	private readonly theme: Theme;
 	private readonly cache: MarkdownContentCache;
+	private readonly notesKey: string;
 
 	constructor(config: PreviewBlockRendererConfig) {
 		this.theme = config.theme;
+		this.notesKey = config.notesKey;
 		this.cache = new MarkdownContentCache(config.question, config.theme, config.markdownTheme);
 	}
 
@@ -96,6 +103,7 @@ export class PreviewBlockRenderer {
 		mode: PreviewLayoutMode,
 		focused: boolean,
 		notesVisible: boolean,
+		hasNote = false,
 	): string[] {
 		const contentBudget = contentBudgetFor(mode);
 		const maxInnerWidth = innerWidthFor(width);
@@ -110,8 +118,14 @@ export class PreviewBlockRenderer {
 		const boxedLines = renderBorderedBox(contentLines, boxWidth, colorFn, hidden);
 
 		const showAffordance = focused && !notesVisible && this.cache.has(optionIndex);
+		const [affordanceKey, affordanceFallback] = hasNote
+			? (["preview.notes_edit_affordance", NOTES_EDIT_AFFORDANCE_TEXT] as const)
+			: (["preview.notes_affordance", NOTES_AFFORDANCE_TEXT] as const);
 		const affordance = showAffordance
-			? this.theme.fg("muted", t("preview.notes_affordance", NOTES_AFFORDANCE_TEXT))
+			? this.theme.fg(
+					"muted",
+					t(affordanceKey, affordanceFallback).replace(KEY_PLACEHOLDER, formatNotesKeyForDisplay(this.notesKey)),
+				)
 			: "";
 		return [...boxedLines, "", affordance];
 	}

@@ -13,7 +13,8 @@ adapts to the size of your terminal.
 | `Esc` | Cancel the whole questionnaire. | Everywhere except the notes editor, where it closes notes |
 | `Tab` / `Shift+Tab` | Next / previous tab, wrapping. `→` / `←` do the same. | Multi-question dialogs only |
 | `Space` | Insert a normal space while typing; never toggle a checkbox. | Text inputs only |
-| `n` | Open the notes editor for the focused question — or, on the Submit tab, the global note for the whole questionnaire. | Every question tab; the Submit tab in multi-question dialogs |
+| `n` | Open the notes editor for the focused question — or, on the Submit tab, the global note for the whole questionnaire. Configurable via `notesKey`. | Every question tab; the Submit tab in multi-question dialogs |
+| `1`–`9` | Act on the row with that number: answer a single-select question, toggle a multi-select row, or move to `Type something.` so you can type. A digit you bound yourself, or set as `notesKey`, keeps that meaning. | Option list |
 | `Ctrl+G` | Open Pi's configured external editor with the current custom-answer draft. | `Type something.` input |
 | `Ctrl+U` | Clear the current custom-answer draft. | `Type something.` input |
 | `Ctrl+]` | Collapse or expand the dialog. Configurable via `collapseKey`. | Everywhere, including while collapsed |
@@ -61,10 +62,16 @@ against the canonical English strings.
 ## Notes
 
 `n` opens a notes editor on any question tab, whether the question is single- or
-multi-select and whether or not its options carry previews. Notes are stored in a
+multi-select and whether or not its options carry previews. On non-Latin layouts set
+`notesKey` (see [Configuration](configuration.md)) to the character your keyboard types,
+or to a key spec such as `"ctrl+n"`. Notes are stored in a
 side-band keyed by tab index, not inside the answer, so writing a note does not mark a
 question as answered — the Submit tab still lists it as outstanding. The note merges into
 the answer when you confirm it, and reaches the model as `user notes: <text>`.
+
+A saved note stays visible after its editor closes, as one dimmed
+`Note for this answer: …` row that `n` reopens; the preview hint switches to
+`Note saved: press n to edit`, and the Submit-tab review uses the same label.
 
 On the Submit tab, `n` opens the global note editor instead — one note covering the whole
 questionnaire. It lives outside every answer, so it survives tab switches and never marks
@@ -76,15 +83,19 @@ keystrokes edit the buffer, so `n` types an `n`. Pasted line breaks are preserve
 
 ## Collapse mode
 
-`Ctrl+]` gets the dialog out of the way: the overlay is marked hidden in Pi's overlay
-stack and shrinks to a single dim hint row, so the transcript it was covering becomes
-readable and chat scrolling resumes. Press the same key to bring the questionnaire back
-with your answers intact. The first time you collapse, Pi notifies you with the key to
-press — that message names your configured key.
+`Ctrl+]` gets the dialog out of the way: it shrinks to a single dim hint row, so the
+transcript becomes readable and chat scrolling resumes. Press the same key to bring the
+questionnaire back with your answers intact. The first time you collapse, Pi notifies you
+with the key to press — that message names your configured key.
 
-Because Pi routes no input to a hidden overlay, the collapse key is additionally captured
-at the raw terminal level. It only acts when the questionnaire is hidden or focused, so a
-different overlay on top of it (for example `/btw`) keeps its keystrokes.
+How it collapses depends on where the dialog opened. Inline (Pi's editor area) it simply
+keeps the editor slot and the one-line row. An overlay is marked hidden in Pi's overlay
+stack instead, and because Pi routes no input to a hidden overlay the collapse key is
+additionally captured at the raw terminal level; it only acts when the questionnaire is
+hidden or focused, so a different overlay on top of it (for example `/btw`) keeps its
+keystrokes. A question that opened on top of `/btw` keeps its one-line row rather than
+hiding, since Pi closes overlays from the top of the stack and would otherwise pop `/btw`
+instead of the hidden question.
 
 While collapsed, every keystroke other than cancel is ignored, so you cannot mutate
 answers you cannot see.
@@ -95,15 +106,24 @@ among others — set a different `collapseKey`, or `"off"` to disable the shortc
 
 ## Layout
 
+The dialog opens inline in Pi's editor area below the transcript, where Pi's own prompts
+appear, and takes at most 70% of the terminal height (never fewer than 12 rows); it
+scrolls within that space, so the transcript above it stays scrollable while a question is
+open. A second questionnaire opened while an inline one is showing, or a question arriving
+while another overlay such as `/btw` is open, opens as an overlay on top instead, so the
+question on screen is the one receiving keys.
+
 Options render in a vertical list. When any option in a single-select question carries a
 `preview`, the dialog splits into a side-by-side layout with the option list on the left
 and a bordered monospace preview box on the right — but only when both the terminal and
 the dialog pane are at least 100 columns wide. Below that, the preview stacks underneath
 the options instead.
 
-When the dialog is taller than the terminal, the body scrolls between a sticky heading and
-a sticky footer, and an overflow indicator shows which direction is clipped: `↑` for
-content above, `↓` for content below, `↕` for both.
+When the dialog is taller than the space it has, the header and question stay pinned while
+the body scrolls between them and a sticky footer, and an overflow indicator shows which
+direction is clipped: `↑` for content above, `↓` for content below, `↕` for both. The
+markers never replace the focused row, padding is trimmed before content, and only the
+padding — never the body — is dropped to make the dialog fit.
 
 The footer hint line adapts to context — it drops the notes hint and appends the
 `Shift+Enter` newline hint whenever a text editor has the keyboard, with `Ctrl+U` still at

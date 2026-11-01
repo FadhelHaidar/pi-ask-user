@@ -47,6 +47,13 @@ export interface QuestionnaireBuildConfig {
 	 * of runtime context.
 	 */
 	collapseKey: string;
+	/** Resolved notes key (`resolveNotesKey` output), named by both tabs' notes hints. */
+	notesKey: string;
+	/**
+	 * Terminal rows → rows the dialog may render (see `presentation.ts`). Defaults to identity;
+	 * an inline mount caps it so the editor slot never outgrows the screen.
+	 */
+	rowBudget?: (terminalRows: number) => number;
 }
 
 export interface QuestionnaireBuilt {
@@ -117,13 +124,14 @@ class QuestionnaireBuilder {
 	private readonly initialState: QuestionnaireState;
 	private readonly getCurrentTab: () => number;
 	private readonly collapseKey: string;
+	private readonly notesKey: string;
 
 	private readonly selectTheme: WrappingSelectTheme;
 	private readonly markdownTheme = getMarkdownTheme();
 	private readonly notesInput: Editor;
 	private readonly inlineInput: Editor;
 	private readonly getTerminalWidth = () => this.tui.terminal.columns;
-	private readonly getTerminalRows = () => this.tui.terminal.rows;
+	private readonly rowBudget: (terminalRows: number) => number;
 
 	constructor(config: QuestionnaireBuildConfig) {
 		this.tui = config.tui;
@@ -134,6 +142,8 @@ class QuestionnaireBuilder {
 		this.initialState = config.initialState;
 		this.getCurrentTab = config.getCurrentTab;
 		this.collapseKey = config.collapseKey;
+		this.notesKey = config.notesKey;
+		this.rowBudget = config.rowBudget ?? ((terminalRows) => terminalRows);
 
 		this.selectTheme = this.makeSelectTheme();
 		const textEditorTheme = editorTheme(this.theme);
@@ -183,6 +193,7 @@ class QuestionnaireBuilder {
 			question,
 			theme: this.theme,
 			markdownTheme: this.markdownTheme,
+			notesKey: this.notesKey,
 		});
 		const preview = new PreviewPane({
 			question,
@@ -266,8 +277,9 @@ class QuestionnaireBuilder {
 				submitPicker,
 				getBodyHeight: heights.global,
 				getCurrentBodyHeight: heights.current,
-				getTerminalRows: this.getTerminalRows,
+				getTerminalRows: () => this.rowBudget(this.tui.terminal.rows),
 				collapseKey: this.collapseKey,
+				notesKey: this.notesKey,
 			},
 			{ state: this.initialState, activePreviewPane: this.pickInitialActivePreview(tabs) },
 		);

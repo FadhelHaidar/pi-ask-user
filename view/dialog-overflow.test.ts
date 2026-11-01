@@ -123,6 +123,7 @@ function makeConfig(over: MakeConfigOverrides = {}): DialogParts {
 		getCurrentBodyHeight: over.getCurrentBodyHeight ?? (() => 1),
 		getTerminalRows: over.getTerminalRows ?? (() => 24),
 		collapseKey: over.collapseKey ?? "ctrl+]",
+		notesKey: over.notesKey ?? "n",
 	};
 	const initialProps: DialogProps = over.initialProps ?? { state, activePreviewPane: previewPane };
 	return { config, initialProps };
@@ -310,10 +311,11 @@ describe("Dialog overflow — submit tab", () => {
 });
 
 describe("Dialog overflow — indicator content", () => {
-	it("shows combined ↕ when availableMiddle === 1 with both overflow directions", () => {
+	it("keeps the focused row over the ↕ arrow when availableMiddle === 1 (#261)", () => {
 		// topFixed=4, bottomFixed=3 (footerRowCount 4→2), termRows=8 → availableMiddle=1.
 		// Body=20 rows, focus at [0,1] → focusedRowInMiddle=2, idealStart=2, scrollStart=2.
-		// hasUp=true, hasDown=true, availableMiddle===1 → combined ↕.
+		// The single middle row IS the focused row, so no arrow is drawn over it — losing the
+		// affordance beats hiding the row the user is on.
 		const dlg = makeDialog(
 			makeConfig({
 				getTerminalRows: () => 8,
@@ -324,12 +326,13 @@ describe("Dialog overflow — indicator content", () => {
 		);
 		const lines = dlg.render(80);
 		expect(lines.length).toBeLessThanOrEqual(8);
-		// Middle row at index topFixed=4 carries the combined glyph.
-		expect(stripAnsi(lines[4])).toBe("↕");
-		// And no separate ↑/↓ leak through.
+		expect(stripAnsi(lines[4])).toBe("<LINE>");
+		// And no arrow leaks through in either direction.
+		expect(lines.some((l) => stripAnsi(l) === "↕")).toBe(false);
 		expect(lines.some((l) => stripAnsi(l) === "↑")).toBe(false);
 		expect(lines.some((l) => stripAnsi(l) === "↓")).toBe(false);
 	});
+
 
 	it("shows individual ↑ and ↓ when availableMiddle > 1 with centering", () => {
 		// termRows=14, availableMiddle=5. focusedItemRowRange=[5,8] → focusedRowInMiddle=7,
@@ -344,9 +347,10 @@ describe("Dialog overflow — indicator content", () => {
 		);
 		const lines = dlg.render(80);
 		expect(lines.length).toBeLessThanOrEqual(14);
-		// Top of middle region (index 4) is ↑, bottom (index 10 = 4+7-1) is ↓. At termRows=14
-		// with bottomFixed=3 (footerRowCount 4→2), availableMiddle = 14 - 4 - 3 = 7.
-		expect(stripAnsi(lines[4])).toBe("↑");
+		// The heading (2 rows) is pinned, so the middle starts at 6 (topFixed=4 + 2) and the
+		// window is 14 - 6 - 3 = 5 rows: ↑ on its top row and ↓ on its last.
+		expect(stripAnsi(lines[4])).toBe("Q1?");
+		expect(stripAnsi(lines[6])).toBe("↑");
 		expect(stripAnsi(lines[10])).toBe("↓");
 		// No combined glyph when there's room for two separate indicators.
 		expect(lines.some((l) => stripAnsi(l) === "↕")).toBe(false);

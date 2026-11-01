@@ -5,10 +5,61 @@ import {
 	type AskUserQuestionConfig,
 	COLLAPSE_KEY_OFF,
 	DEFAULT_COLLAPSE_KEY,
+	DEFAULT_NOTES_KEY,
 	formatKeySpecForDisplay,
+	formatNotesKeyForDisplay,
 	loadConfig,
 	resolveCollapseKey,
+	resolveNotesKey,
 } from "./config.js";
+
+describe("resolveNotesKey", () => {
+	it("defaults to `n`", () => {
+		expect(resolveNotesKey({})).toBe(DEFAULT_NOTES_KEY);
+		expect(resolveNotesKey({ notesKey: "  " })).toBe(DEFAULT_NOTES_KEY);
+	});
+
+	it("accepts any single character, including non-Latin ones", () => {
+		expect(resolveNotesKey({ notesKey: "m" })).toBe("m");
+		expect(resolveNotesKey({ notesKey: "т" })).toBe("т");
+	});
+
+	it("accepts a key spec and normalizes its case", () => {
+		expect(resolveNotesKey({ notesKey: "Ctrl+N" })).toBe("ctrl+n");
+		expect(resolveNotesKey({ notesKey: "alt+;" })).toBe("alt+;");
+	});
+
+	it("falls back to `n` for keys the questionnaire already navigates with", () => {
+		for (const reserved of ["space", "enter", "tab", "escape", "up", "down", "left", "right"]) {
+			expect(resolveNotesKey({ notesKey: reserved })).toBe(DEFAULT_NOTES_KEY);
+		}
+	});
+
+	it("falls back to `n` for a malformed spec", () => {
+		expect(resolveNotesKey({ notesKey: "ctr+n" })).toBe(DEFAULT_NOTES_KEY);
+		expect(resolveNotesKey({ notesKey: "notakey" })).toBe(DEFAULT_NOTES_KEY);
+	});
+
+	it("falls back to `n` for a wrongly typed value instead of throwing", () => {
+		// lib/config-io.ts validates only the outer object, so the field arrives as authored.
+		for (const wrong of [7, true, {}, [], null]) {
+			expect(resolveNotesKey({ notesKey: wrong as unknown as string })).toBe(DEFAULT_NOTES_KEY);
+		}
+	});
+});
+
+describe("formatNotesKeyForDisplay", () => {
+	it("shows a single character as configured and display-cases a spec", () => {
+		expect(formatNotesKeyForDisplay("n")).toBe("n");
+		expect(formatNotesKeyForDisplay("т")).toBe("т");
+		expect(formatNotesKeyForDisplay("ctrl+n")).toBe("Ctrl+N");
+	});
+
+	it("falls back to the default for a missing key (stale outer module)", () => {
+		expect(formatNotesKeyForDisplay(undefined)).toBe(DEFAULT_NOTES_KEY);
+		expect(formatNotesKeyForDisplay("")).toBe(DEFAULT_NOTES_KEY);
+	});
+});
 
 describe("formatKeySpecForDisplay", () => {
 	it("capitalizes each +-part of a resolved spec", () => {

@@ -4,6 +4,7 @@ import { createMockPi } from "@juicesharp/rpiv-test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerAskUserQuestionTool } from "./ask-user-question.js";
 import type { AskUserQuestionConfig } from "./config.js";
+import { resolvePresentation } from "./presentation.js";
 
 /**
  * Integration tests for the raw `ctx.ui.onTerminalInput` collapse listener.
@@ -11,7 +12,14 @@ import type { AskUserQuestionConfig } from "./config.js";
  * no raw listener is available); these drive the listener path that pi-tui
  * needs while the overlay is hidden, using the real QuestionnaireSession via
  * the `ctx.ui.custom` factory and a fake OverlayHandle.
+ *
+ * Only an overlay can be hidden and reopened, and `execute()` mounts inline in Pi's editor
+ * slot unless that slot is taken. Each test therefore holds the slot first, which is the
+ * real second-questionnaire case: `resolvePresentation()` degrades to the hideable overlay.
  */
+function holdInlineSlot(): void {
+	resolvePresentation();
+}
 
 const identityTheme = {
 	fg: (_c: string, s: string) => s,
@@ -125,6 +133,7 @@ afterEach(() => {
 
 describe("ask_user_question — raw terminal collapse listener", () => {
 	it("hides via OverlayHandle.setHidden, notifies once, and unhides on the second press", async () => {
+		holdInlineSlot();
 		const tool = register();
 		const handle = makeHandle();
 		const { ctx, notify, removeListener, listenerRef } = driveWithListener(handle, (done) => {
@@ -148,6 +157,7 @@ describe("ask_user_question — raw terminal collapse listener", () => {
 	});
 
 	it("toggles once for Kitty keyboard press, repeat, and release events", async () => {
+		holdInlineSlot();
 		const tool = register();
 		const handle = makeHandle();
 		const { ctx, listenerRef } = driveWithListener(handle, (done) => {
@@ -169,6 +179,7 @@ describe("ask_user_question — raw terminal collapse listener", () => {
 	});
 
 	it("ignores non-matching keys", async () => {
+		holdInlineSlot();
 		const tool = register();
 		const handle = makeHandle();
 		const { ctx, notify, listenerRef } = driveWithListener(handle, (done) => {
@@ -199,6 +210,7 @@ describe("ask_user_question — raw terminal collapse listener", () => {
 		// path: the component's handleInput — which pi-tui does not deliver to a hidden
 		// overlay. If collapsing hid the overlay here, nothing could ever reopen it, so
 		// the session must suppress setHidden and rely on the one-line collapsed row.
+		holdInlineSlot();
 		const tool = register();
 		const handle = makeHandle();
 		const componentRef: { current: SessionComponent | undefined } = { current: undefined };
@@ -238,6 +250,7 @@ describe("ask_user_question — raw terminal collapse listener", () => {
 
 	it("honours a configured collapseKey (alt+o toggles, ctrl+] does not)", async () => {
 		writeCollapseKeyConfig("alt+o");
+		holdInlineSlot();
 		const tool = register();
 		const handle = makeHandle();
 		const { ctx, listenerRef } = driveWithListener(handle, (done) => {
@@ -252,6 +265,7 @@ describe("ask_user_question — raw terminal collapse listener", () => {
 
 	it("footer hint and collapsed row name the configured collapseKey (#176)", async () => {
 		writeCollapseKeyConfig("alt+o");
+		holdInlineSlot();
 		const tool = register();
 		const handle = makeHandle();
 		const { ctx, componentRef } = driveWithListener(handle, (done) => {
@@ -271,6 +285,7 @@ describe("ask_user_question — raw terminal collapse listener", () => {
 
 	it("does not register a listener when collapseKey is 'off'", async () => {
 		writeCollapseKeyConfig("off");
+		holdInlineSlot();
 		const tool = register();
 		const handle = makeHandle();
 		const { ctx, onTerminalInput, componentRef } = driveWithListener(handle, (done) => {

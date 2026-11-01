@@ -50,14 +50,16 @@ For GitSync and new machines, use the unpinned Pi package source `npm:@fadhelhai
 - Drafts and checkbox state survive tab changes.
 - Single-select behavior remains unchanged.
 
-Use arrow keys to move, Tab to switch questions, Enter to choose/toggle, and Esc to cancel. The custom-answer row is appended automatically; models must not author it. Previews are available for single-select questions. Ctrl+] collapses the overlay, Shift+Enter adds a line, and Ctrl+G opens the external editor.
+Use arrow keys to move, Tab to switch questions, Enter to choose/toggle, and Esc to cancel. The custom-answer row is appended automatically; models must not author it. Previews are available for single-select questions. Digits `1`–`9` act on the row with that number, Ctrl+] collapses the dialog, Shift+Enter adds a line, and Ctrl+G opens the external editor. The dialog opens inline in Pi's editor area and takes at most 70% of the terminal height.
+
+Inline presentation, digit shortcuts, transcript receipts, `unanswered` reporting for skipped questions and the `rpiv:ask-user:answer` inbound event are ported from upstream. Upstream's Space-to-toggle, automatic custom-text checking and draft-clearing behaviors are deliberately not adopted: this fork keeps Enter-only toggling and explicit custom checkboxes.
 
 ## Compatibility and configuration
 
 The tool remains named `ask_user_question`. Event names and the localization namespace are preserved for compatibility. Existing configuration remains at `~/.config/rpiv-ask-user-question/config.json`, honoring `XDG_CONFIG_HOME` with legacy fallback.
 
 ```json
-{ "collapseKey": "alt+o" }
+{ "collapseKey": "alt+o", "notesKey": "т" }
 ```
 
 The optional `@juicesharp/rpiv-i18n` integration is retained. Without it, the UI uses English. Runtime config helpers are included locally; no rpiv-config dependency is required.
