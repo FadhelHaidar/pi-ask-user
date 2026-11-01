@@ -5,6 +5,14 @@ All notable changes to `@fadhelhaidar/pi-ask-user` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/FadhelHaidar/pi-ask-user/compare/v1.0.4...v1.1.0) (2026-11-01)
+
+
+### Features
+
+* port compatible upstream 2.15 updates ([de9fe0e](https://github.com/FadhelHaidar/pi-ask-user/commit/de9fe0eb6e87aa7ea0e11b5ca79f7857ef8af57c))
+* port compatible upstream 2.15 updates while preserving fork behavior ([92bcc84](https://github.com/FadhelHaidar/pi-ask-user/commit/92bcc84b36c4c8fe264fedd7af9b51ac862b31fd))
+
 ## [1.0.4](https://github.com/FadhelHaidar/pi-ask-user/compare/v1.0.3...v1.0.4) (2026-10-15)
 
 
