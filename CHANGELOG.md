@@ -5,6 +5,14 @@ All notable changes to `@fadhelhaidar/pi-ask-user` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/FadhelHaidar/pi-ask-user/compare/v1.1.0...v1.2.0) (2026-11-11)
+
+
+### Features
+
+* report questionnaire waiting status on Pi 1.5 ([8a1213e](https://github.com/FadhelHaidar/pi-ask-user/commit/8a1213e6c9fef76fccb92da440ffd0054b9af53e))
+* report questionnaire waiting status on Pi 1.5 ([5dd87f0](https://github.com/FadhelHaidar/pi-ask-user/commit/5dd87f0150f5c53b0dae7f87f9b6970b4c175901))
+
 ## [1.1.0](https://github.com/FadhelHaidar/pi-ask-user/compare/v1.0.4...v1.1.0) (2026-11-01)
 
 
