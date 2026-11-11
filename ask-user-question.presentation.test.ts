@@ -78,13 +78,13 @@ describe("inline presentation", () => {
 	it("mounts in the editor slot and registers no raw collapse listener", async () => {
 		const { run, ctx, onTerminalInput } = setup(async () => ({ answers: [], cancelled: true }));
 		await run(twoOptions);
-		expect(vi.mocked(ctx.ui.custom).mock.calls[0]?.[1]).toEqual({ overlay: false });
+		expect(vi.mocked(ctx.ui.custom).mock.calls[0]?.[1]).toEqual({ overlay: false, blocked: { kind: "question", message: "Answer the questionnaire" } });
 		expect(onTerminalInput).not.toHaveBeenCalled();
 	});
 
 	it("collapses to a visible row without a raw listener, and still submits", async () => {
 		const { run, ctx, onTerminalInput } = setup(async (factory, options) => {
-			expect(options).toEqual({ overlay: false });
+			expect(options).toEqual({ overlay: false, blocked: { kind: "question", message: "Answer the questionnaire" } });
 			let result: QuestionnaireResult | undefined;
 			const component = mount(factory, 24, (answer) => {
 				result = answer;
@@ -143,7 +143,7 @@ describe("inline presentation", () => {
 		// Slot free again: the next questionnaire still mounts inline rather than as an overlay.
 		const next = setup(async () => ({ answers: [], cancelled: true }));
 		await next.run(twoOptions);
-		expect(vi.mocked(next.ctx.ui.custom).mock.calls[0]?.[1]).toEqual({ overlay: false });
+		expect(vi.mocked(next.ctx.ui.custom).mock.calls[0]?.[1]).toEqual({ overlay: false, blocked: { kind: "question", message: "Answer the questionnaire" } });
 	});
 });
 
@@ -179,7 +179,7 @@ describe("overlay fallback", () => {
 		await vi.waitFor(() => expect(mounted).toHaveLength(2));
 		// The inline attempt gives the slot up (mount 1), then the question stacks on top of the
 		// overlay already on screen (mount 2).
-		expect(vi.mocked(ctx.ui.custom).mock.calls[0]?.[1]).toEqual({ overlay: false });
+		expect(vi.mocked(ctx.ui.custom).mock.calls[0]?.[1]).toEqual({ overlay: false, blocked: { kind: "question", message: "Answer the questionnaire" } });
 		expect(vi.mocked(ctx.ui.custom).mock.calls[1]?.[1]).toMatchObject({ overlay: true });
 		// A stacked overlay keeps a visible one-row hint instead of hiding: pi-tui pops the
 		// TOPMOST overlay, so a hidden one would be popped by the overlay below it.

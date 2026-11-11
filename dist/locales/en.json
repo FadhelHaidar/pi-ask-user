@@ -29,5 +29,6 @@
 	"transcript.not_answered": "not answered",
 	"transcript.no_answer": "no answer",
 	"notes.saved_label": "Note for this answer:",
-	"preview.notes_edit_affordance": "Note saved: press {key} to edit"
+	"preview.notes_edit_affordance": "Note saved: press {key} to edit",
+	"status.blocked": "Answer the questionnaire"
 }

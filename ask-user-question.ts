@@ -514,6 +514,7 @@ async function runTuiPath(
 								maxHeight: "100%",
 								margin: { left: 0, right: 0, bottom: 0 },
 							},
+							blocked: { kind: "question", message: t("status.blocked", "Answer the questionnaire") },
 							onHandle: (handle) => {
 								overlayHandleRef.current = handle;
 								sessionRef.current?.setOverlayHandle(handle);
@@ -521,7 +522,10 @@ async function runTuiPath(
 								if (open.settled) handle.hide();
 							},
 						}
-						: { overlay: false },
+						: {
+								overlay: false,
+								blocked: { kind: "question", message: t("status.blocked", "Answer the questionnaire") },
+							},
 				),
 				open.answeredEarly,
 			]);
