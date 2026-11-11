@@ -54,6 +54,8 @@ Use arrow keys to move, Tab to switch questions, Enter to choose/toggle, and Esc
 
 Inline presentation, digit shortcuts, transcript receipts, `unanswered` reporting for skipped questions and the `rpiv:ask-user:answer` inbound event are ported from upstream. Upstream's Space-to-toggle, automatic custom-text checking and draft-clearing behaviors are deliberately not adopted: this fork keeps Enter-only toggling and explicit custom checkboxes.
 
+On Pi 1.5+, an open questionnaire reports that Pi is waiting for an answer through OSC 7501. Supporting terminals can display this status; the dialog layout and controls are unchanged.
+
 ## Compatibility and configuration
 
 The tool remains named `ask_user_question`. Event names and the localization namespace are preserved for compatibility. Existing configuration remains at `~/.config/rpiv-ask-user-question/config.json`, honoring `XDG_CONFIG_HOME` with legacy fallback.
